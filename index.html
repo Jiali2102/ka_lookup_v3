@@ -628,6 +628,26 @@
       line-height: 1.5;
     }
 
+    .th-table td.th-yes {
+      cursor: pointer;
+      color: #1E7B45;
+      font-weight: 600;
+    }
+
+    .th-table td.th-yes:hover,
+    .th-table td.th-open {
+      background: #E9F7EF;
+    }
+
+    .th-table td.th-no {
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .th-table tr.th-detail > td {
+      background: var(--bg);
+    }
+
     .chk-source-wrap {
       margin-bottom: 12px;
     }
@@ -2105,7 +2125,7 @@
 
           <div class="chk-history-title"><span>🕘 Lịch sử gần đây</span><button class="h-clear-all" id="dv2-history-clear" title="Xóa toàn bộ lịch sử">🗑 Xóa tất cả</button></div>
           <div id="dv2-history-list"></div>
-          <div class="dv2-version">v3 · bản 2026-10-03.2</div>
+          <div class="dv2-version">v3 · bản 2026-10-03.3</div>
         </div>
 
         <div id="chk-mode-panel-pod" style="display:none;">
@@ -2161,6 +2181,15 @@
       const CONFIG = {
         WEBHOOK_URL: WEBHOOK_BASE_URL,
         TABS: {
+          tonghop: {
+            label: "Tổng hợp",
+            hint: "Dán mã đơn để xem cùng lúc đền bù, quá hạn, miễn cước, ticket và fake attempt. Bấm ô ✅ để xem chi tiết.",
+            useDateRange: false,
+            knownFields: [],
+            amountFields: [],
+            dateFields: [],
+            statusField: null
+          },
           denbu: {
             label: "Đền bù",
             useDateRange: false,
@@ -2304,6 +2333,7 @@
           currentPage = 1;
           updateCount();
         }
+        if (key === "tonghop" && tongHopState) renderTongHop(tongHopState);
       }
       function updateCount() {
         const n = parseCodes(codesInput.value).length;
@@ -2726,10 +2756,114 @@
         }
       }
       const CODES_PER_REQUEST = 1e3;
-      const TAB_CHUNK = { denbu: 300, miencuoc: 300, ticket: 500, quahan: 1e3, fake_attempt: 1e3 };
+      const TAB_CHUNK = { tonghop: 200, denbu: 300, miencuoc: 300, ticket: 300, quahan: 300, fake_attempt: 300 };
       const TAB_PARALLEL = 2;
       let lastElapsedMs = 0;
       let lastSearchState = null;
+      let tongHopState = null;
+      const TH_SOURCES = [
+        { k: "den_bu", label: "Đền bù", fields: ["so_tien", "loai_yeu_cau", "ngay_duyet"], brief: list => formatMoney(list.reduce((s, e) => s + (Number(e.so_tien) || 0), 0)) },
+        { k: "qua_han", label: "Quá hạn", fields: ["reason", "overdue_date"], brief: list => list.map(e => e.overdue_date).filter(Boolean).sort().slice(-1)[0] || "Có" },
+        { k: "mien_cuoc", label: "Miễn cước", fields: ["so_tien_mien", "thang_mien_cuoc", "ly_do", "loai_don_hang"], brief: list => formatMoney(list.reduce((s, e) => s + (Number(e.so_tien_mien) || 0), 0)) },
+        { k: "ticket", label: "Ticket", fields: ["client_name", "reason_type", "first_article_from", "ticket_url"], brief: list => `${list.length} ticket` },
+        { k: "fake", label: "Fake Attempt", fields: ["month", "client_type"], brief: list => [...new Set(list.map(e => String(e.month || "").slice(0, 7)))].join(", ") }
+      ];
+      function thEsc(v) {
+        return String(v ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+      }
+      function thRows(state) {
+        const by = new Map();
+        for (const it of state.items) {
+          const key = String(it.order_code || "").toUpperCase();
+          const cur = by.get(key) || { order_code: key, den_bu: [], qua_han: [], mien_cuoc: [], ticket: [], fake: [] };
+          for (const s of TH_SOURCES) cur[s.k].push(...(it[s.k] || []));
+          by.set(key, cur);
+        }
+        return state.codes.map(c => by.get(c.toUpperCase()) || { order_code: c.toUpperCase(), den_bu: [], qua_han: [], mien_cuoc: [], ticket: [], fake: [] });
+      }
+      function thDetailHtml(row, s) {
+        const list = row[s.k] || [];
+        const head = s.fields.map(f => `<th>${thEsc(CONFIG.FIELD_LABELS[f] || f)}</th>`).join("");
+        const body = list.map(e => `<tr>${s.fields.map(f => {
+          const v = e[f];
+          if (f === "ticket_url" && v) return `<td><a class="ticket-link" href="${thEsc(v)}" target="_blank" rel="noopener">Mở ticket</a></td>`;
+          if (f === "so_tien" || f === "so_tien_mien") return `<td class="amount-cell">${thEsc(formatMoney(v))}</td>`;
+          return `<td>${thEsc(v)}</td>`;
+        }).join("")}</tr>`).join("");
+        return `<div style="padding:8px 4px;"><b>${thEsc(s.label)} · ${thEsc(row.order_code)}</b> (${list.length} dòng)<div class="results-table-wrap" style="margin-top:6px;"><table class="result-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div></div>`;
+      }
+      function renderTongHop(state) {
+        tongHopState = state;
+        lastFullItems = [];
+        lastRequestedCodes = [];
+        lastElapsedMs = state.ms;
+        const rows = thRows(state);
+        const count = k => rows.filter(r => r[k].length).length;
+        const empty = rows.filter(r => TH_SOURCES.every(s => !r[s.k].length)).length;
+        const srcErr = Object.entries(state.srcErrors || {});
+        const body = rows.map((r, i) => `<tr data-th-row="${i}"><td class="code-cell">${thEsc(r.order_code)}</td>${TH_SOURCES.map(s => r[s.k].length
+          ? `<td class="th-yes" data-th-i="${i}" data-th-k="${s.k}" title="Bấm để xem chi tiết">✅ ${thEsc(s.brief(r[s.k]))}</td>`
+          : `<td class="th-no">—</td>`).join("")}</tr>`).join("");
+        resultsArea.innerHTML = `
+          <div class="toolbar">
+            <div class="stats">
+              <span class="stat-badge total">Tổng mã đơn: ${rows.length}</span>
+              ${TH_SOURCES.map(s => `<span class="stat-badge found">${thEsc(s.label)}: ${count(s.k)}</span>`).join("")}
+              <span class="stat-badge notfound">Không có dữ liệu: ${empty}</span>
+              ${state.ms ? `<span class="stat-badge" title="Tổng thời gian tra cứu">⏱ ${(state.ms / 1000).toFixed(1)}s</span>` : ""}
+            </div>
+            <div class="toolbar-actions">
+              <button class="btn-ghost" id="th-copy">Copy kết quả</button>
+              <button class="btn-ghost" id="th-xlsx">⬇ Tải Excel</button>
+            </div>
+          </div>
+          <div class="results-table-wrap">
+            <table class="result-table th-table">
+              <thead><tr><th>Mã đơn</th>${TH_SOURCES.map(s => `<th>${thEsc(s.label)}</th>`).join("")}</tr></thead>
+              <tbody>${body}</tbody>
+            </table>
+          </div>
+          ${srcErr.length ? `<div class="state error" style="margin-top:10px;">⚠️ Một số nguồn bị lỗi, cột tương ứng có thể thiếu: ${srcErr.map(([k, v]) => `${thEsc(k)}: ${thEsc(v)}`).join("; ")}</div>` : ""}`;
+        el("#notfound-area").innerHTML = "";
+        resultsArea.querySelectorAll(".th-yes").forEach(td => {
+          td.onclick = () => {
+            const tr = td.closest("tr");
+            const next = tr.nextElementSibling;
+            const key = `${td.dataset.thI}-${td.dataset.thK}`;
+            if (next && next.classList.contains("th-detail")) {
+              const same = next.dataset.thKey === key;
+              next.remove();
+              resultsArea.querySelectorAll(".th-yes.th-open").forEach(x => x.classList.remove("th-open"));
+              if (same) return;
+            }
+            resultsArea.querySelectorAll(".th-yes.th-open").forEach(x => x.classList.remove("th-open"));
+            td.classList.add("th-open");
+            const s = TH_SOURCES.find(x => x.k === td.dataset.thK);
+            const d = document.createElement("tr");
+            d.className = "th-detail";
+            d.dataset.thKey = key;
+            d.innerHTML = `<td colspan="${TH_SOURCES.length + 1}">${thDetailHtml(rows[Number(td.dataset.thI)], s)}</td>`;
+            tr.after(d);
+          };
+        });
+        el("#th-copy").onclick = async () => {
+          const text = [["Mã đơn", ...TH_SOURCES.map(s => s.label)].join("\t"), ...rows.map(r => [r.order_code, ...TH_SOURCES.map(s => r[s.k].length ? s.brief(r[s.k]) : "")].join("\t"))].join("\n");
+          try { await navigator.clipboard.writeText(text); el("#th-copy").textContent = "✓ Đã copy"; } catch (e) { el("#th-copy").textContent = "Không copy được"; }
+          setTimeout(() => { const b = el("#th-copy"); if (b) b.textContent = "Copy kết quả"; }, 1500);
+        };
+        el("#th-xlsx").onclick = () => {
+          const wb = XLSX.utils.book_new();
+          const sum = [["Mã đơn", ...TH_SOURCES.map(s => s.label)], ...rows.map(r => [r.order_code, ...TH_SOURCES.map(s => r[s.k].length ? s.brief(r[s.k]) : "")])];
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sum), "Tổng hợp");
+          for (const s of TH_SOURCES) {
+            const aoa = [["Mã đơn", ...s.fields.map(f => CONFIG.FIELD_LABELS[f] || f)]];
+            for (const r of rows) for (const e of r[s.k]) aoa.push([r.order_code, ...s.fields.map(f => e[f] ?? "")]);
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), s.label.slice(0, 31));
+          }
+          const stamp = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" }).replace(/[-: ]/g, "");
+          XLSX.writeFile(wb, `tong_hop_${stamp}.xlsx`);
+        };
+      }
       function chunkArray(arr, size) {
         const out = [];
         for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -2798,7 +2932,7 @@
               const data = await res.json();
               if (data.ok === false) throw new Error(data.message || "Lỗi không xác định");
               const items = Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : [];
-              results[i] = { items };
+              results[i] = { items, errors: data.errors };
               found += new Set(items.map(it => String(it.order_code || it.ma_don || "").toUpperCase())).size;
             } catch (err) {
               results[i] = { error: err.message };
@@ -2810,7 +2944,10 @@
         await Promise.all(Array.from({ length: Math.min(TAB_PARALLEL, chunks.length) }, worker));
         clearInterval(ticker);
         results.forEach((r, i) => {
-          if (r && r.items) state.items.push(...r.items);
+          if (r && r.items) {
+            state.items.push(...r.items);
+            if (r.errors && Object.keys(r.errors).length) state.srcErrors = Object.assign(state.srcErrors || {}, r.errors);
+          }
           else state.failed.push({ index: state.failed.length + 1, count: chunks[i].length, message: (r && r.error) || "Không rõ lỗi", codes: chunks[i] });
         });
         state.ms += Date.now() - t0;
@@ -2825,7 +2962,7 @@
           bindRetry(state);
           return;
         }
-        renderResults(state.items, state.codes);
+        if (state.tab === "tonghop") renderTongHop(state); else renderResults(state.items, state.codes);
         if (state.failed.length) {
           const failNote = state.failed.map(f => `lượt ${f.index} (${f.count} mã, lỗi: ${f.message})`).join("; ");
           resultsArea.insertAdjacentHTML("beforeend", `<div class="state error" style="margin-top:10px;">⚠️ ${state.failed.length} lượt bị lỗi (${failedCodes} mã chưa tra được), kết quả có thể chưa đầy đủ: ${failNote}<div style="margin-top:8px;"><button class="btn-ghost" id="btn-retry-failed">🔁 Tra lại ${failedCodes} mã bị lỗi</button></div></div>`);
@@ -4477,6 +4614,7 @@
     let sessionPassword = "";
 
     const TYPE_WIRE_MAP = {
+      tonghop: "v8",
       denbu: "v2",
       quahan: "v3",
       ticket: "v4",
