@@ -644,6 +644,50 @@
       text-align: center;
     }
 
+    .th-chip {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .th-chip.th-chip-has {
+      background: var(--orange);
+      border-color: var(--orange);
+      color: #fff;
+    }
+
+    .th-chip.th-chip-not {
+      background: #4B5563;
+      border-color: #4B5563;
+      color: #fff;
+    }
+
+    .th-chip-rule {
+      background: #FFF4E5;
+      border-color: #F5B971;
+      color: #9A4A00;
+    }
+
+    .th-filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 0 0 10px;
+      font-size: 14.5px;
+    }
+
+    .th-todo-tag {
+      display: inline-block;
+      margin: 2px 4px 2px 0;
+      padding: 1px 8px;
+      border-radius: 999px;
+      background: #FFF4E5;
+      color: #9A4A00;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
     .th-table tr.th-detail > td {
       background: var(--bg);
     }
@@ -2125,7 +2169,7 @@
 
           <div class="chk-history-title"><span>🕘 Lịch sử gần đây</span><button class="h-clear-all" id="dv2-history-clear" title="Xóa toàn bộ lịch sử">🗑 Xóa tất cả</button></div>
           <div id="dv2-history-list"></div>
-          <div class="dv2-version">v3 · bản 2026-10-03.3</div>
+          <div class="dv2-version">v3 · bản 2026-10-03.4</div>
         </div>
 
         <div id="chk-mode-panel-pod" style="display:none;">
@@ -2756,11 +2800,41 @@
         }
       }
       const CODES_PER_REQUEST = 1e3;
-      const TAB_CHUNK = { tonghop: 200, denbu: 300, miencuoc: 300, ticket: 300, quahan: 300, fake_attempt: 300 };
+      const TAB_CHUNK = { tonghop: 300, denbu: 300, miencuoc: 300, ticket: 300, quahan: 300, fake_attempt: 300 };
+      const TAB_PARALLEL_BY = { tonghop: 1 };
       const TAB_PARALLEL = 2;
       let lastElapsedMs = 0;
       let lastSearchState = null;
       let tongHopState = null;
+      const TH_RULES = [
+        { label: "Quá hạn chưa đền bù", test: r => r.qua_han.length && !r.den_bu.length },
+        { label: "Ticket hư hỏng/mất chưa đền bù", test: r => !r.den_bu.length && r.ticket.some(t => /hư hỏng|mất|thiếu|tráo/i.test(t.reason_type || "")) },
+        { label: "Đền bù âm", test: r => r.den_bu.length && r.den_bu.reduce((s, e) => s + (Number(e.so_tien) || 0), 0) < 0 },
+        { label: "Đền bù 0đ", test: r => r.den_bu.length && r.den_bu.reduce((s, e) => s + (Number(e.so_tien) || 0), 0) === 0 }
+      ];
+      let thFilter = {};
+      const thTodo = r => TH_RULES.filter(x => x.test(r)).map(x => x.label);
+      function thPass(r) {
+        for (const [k, v] of Object.entries(thFilter)) {
+          if (k.startsWith("rule:")) {
+            const rule = TH_RULES.find(x => `rule:${x.label}` === k);
+            if (rule && !rule.test(r)) return false;
+            continue;
+          }
+          const has = (r[k] || []).length > 0;
+          if (v === "has" && !has) return false;
+          if (v === "not" && has) return false;
+        }
+        return true;
+      }
+      function thFilterText() {
+        const parts = Object.entries(thFilter).map(([k, v]) => {
+          if (k.startsWith("rule:")) return `🟠 ${k.slice(5)}`;
+          const s = TH_SOURCES.find(x => x.k === k);
+          return `${v === "has" ? "có" : "chưa có"} ${s ? s.label : k}`;
+        });
+        return parts.join(" · ");
+      }
       const TH_SOURCES = [
         { k: "den_bu", label: "Đền bù", fields: ["so_tien", "loai_yeu_cau", "ngay_duyet"], brief: list => formatMoney(list.reduce((s, e) => s + (Number(e.so_tien) || 0), 0)) },
         { k: "qua_han", label: "Quá hạn", fields: ["reason", "overdue_date"], brief: list => list.map(e => e.overdue_date).filter(Boolean).sort().slice(-1)[0] || "Có" },
@@ -2797,34 +2871,65 @@
         lastFullItems = [];
         lastRequestedCodes = [];
         lastElapsedMs = state.ms;
-        const rows = thRows(state);
-        const count = k => rows.filter(r => r[k].length).length;
-        const empty = rows.filter(r => TH_SOURCES.every(s => !r[s.k].length)).length;
+        const allRows = thRows(state);
+        const rows = allRows.filter(thPass);
+        const count = k => allRows.filter(r => r[k].length).length;
+        const empty = allRows.filter(r => TH_SOURCES.every(s => !r[s.k].length)).length;
         const srcErr = Object.entries(state.srcErrors || {});
-        const body = rows.map((r, i) => `<tr data-th-row="${i}"><td class="code-cell">${thEsc(r.order_code)}</td>${TH_SOURCES.map(s => r[s.k].length
-          ? `<td class="th-yes" data-th-i="${i}" data-th-k="${s.k}" title="Bấm để xem chi tiết">✅ ${thEsc(s.brief(r[s.k]))}</td>`
-          : `<td class="th-no">—</td>`).join("")}</tr>`).join("");
+        const SRC_LABEL = { denbu: "Đền bù", quahan: "Quá hạn", mc: "Miễn cước", ticket: "Ticket", fake: "Fake Attempt" };
+        const msTitle = state.srcMs ? Object.entries(state.srcMs).map(([k, v]) => `${SRC_LABEL[k] || k}: ${(v / 1000).toFixed(1)}s`).join(" · ") : "Tổng thời gian tra cứu";
+        const chip = s => {
+          const v = thFilter[s.k];
+          const cls = v === "has" ? " th-chip-has" : v === "not" ? " th-chip-not" : "";
+          const prefix = v === "not" ? "Chưa có " : "";
+          return `<span class="stat-badge found th-chip${cls}" data-th-chip="${s.k}" title="Bấm: có → chưa có → bỏ lọc · Ctrl + bấm để kết hợp">${prefix}${thEsc(s.label)}: ${v === "not" ? allRows.length - count(s.k) : count(s.k)}</span>`;
+        };
+        const ruleCounts = TH_RULES.map(x => [x, allRows.filter(x.test).length]).filter(([, n]) => n);
+        const ruleChip = ([x, n]) => `<span class="stat-badge th-chip th-chip-rule${thFilter[`rule:${x.label}`] ? " th-chip-has" : ""}" data-th-chip="rule:${thEsc(x.label)}" title="Bấm để lọc · Ctrl + bấm để kết hợp">🟠 ${thEsc(x.label)}: ${n}</span>`;
+        const body = rows.map(r => {
+          const i = allRows.indexOf(r);
+          const todo = thTodo(r);
+          return `<tr data-th-row="${i}"><td class="code-cell">${thEsc(r.order_code)}</td>${TH_SOURCES.map(s => r[s.k].length
+            ? `<td class="th-yes" data-th-i="${i}" data-th-k="${s.k}" title="Bấm để xem chi tiết">✅ ${thEsc(s.brief(r[s.k]))}</td>`
+            : `<td class="th-no">—</td>`).join("")}<td class="th-todo">${todo.map(t => `<span class="th-todo-tag">${thEsc(t)}</span>`).join("")}</td></tr>`;
+        }).join("");
+        const filterOn = Object.keys(thFilter).length;
         resultsArea.innerHTML = `
           <div class="toolbar">
             <div class="stats">
-              <span class="stat-badge total">Tổng mã đơn: ${rows.length}</span>
-              ${TH_SOURCES.map(s => `<span class="stat-badge found">${thEsc(s.label)}: ${count(s.k)}</span>`).join("")}
+              <span class="stat-badge total">Tổng mã đơn: ${allRows.length}</span>
+              ${TH_SOURCES.map(chip).join("")}
               <span class="stat-badge notfound">Không có dữ liệu: ${empty}</span>
-              ${state.ms ? `<span class="stat-badge" title="Tổng thời gian tra cứu">⏱ ${(state.ms / 1000).toFixed(1)}s</span>` : ""}
+              ${state.ms ? `<span class="stat-badge" title="${thEsc(msTitle)}">⏱ ${(state.ms / 1000).toFixed(1)}s</span>` : ""}
             </div>
             <div class="toolbar-actions">
               <button class="btn-ghost" id="th-copy">Copy kết quả</button>
               <button class="btn-ghost" id="th-xlsx">⬇ Tải Excel</button>
             </div>
           </div>
+          ${ruleCounts.length ? `<div class="stats" style="margin:0 0 10px;">${ruleCounts.map(ruleChip).join("")}</div>` : ""}
+          ${filterOn ? `<div class="th-filter-bar">Đang lọc: <b>${thEsc(thFilterText())}</b> · ${rows.length}/${allRows.length} mã <button class="btn-ghost" id="th-clear">✕ Bỏ lọc</button></div>` : ""}
           <div class="results-table-wrap">
             <table class="result-table th-table">
-              <thead><tr><th>Mã đơn</th>${TH_SOURCES.map(s => `<th>${thEsc(s.label)}</th>`).join("")}</tr></thead>
-              <tbody>${body}</tbody>
+              <thead><tr><th>Mã đơn</th>${TH_SOURCES.map(s => `<th>${thEsc(s.label)}</th>`).join("")}<th>Cần xử lý</th></tr></thead>
+              <tbody>${body || `<tr><td colspan="${TH_SOURCES.length + 2}" class="th-no">Không có mã nào khớp bộ lọc</td></tr>`}</tbody>
             </table>
           </div>
           ${srcErr.length ? `<div class="state error" style="margin-top:10px;">⚠️ Một số nguồn bị lỗi, cột tương ứng có thể thiếu: ${srcErr.map(([k, v]) => `${thEsc(k)}: ${thEsc(v)}`).join("; ")}</div>` : ""}`;
         el("#notfound-area").innerHTML = "";
+        resultsArea.querySelectorAll("[data-th-chip]").forEach(c => {
+          c.onclick = e => {
+            const k = c.dataset.thChip;
+            const isRule = k.startsWith("rule:");
+            const curV = thFilter[k];
+            const nextV = isRule ? (curV ? null : "has") : (!curV ? "has" : curV === "has" ? "not" : null);
+            if (!(e.ctrlKey || e.metaKey)) thFilter = {};
+            if (nextV) thFilter[k] = nextV; else delete thFilter[k];
+            renderTongHop(state);
+          };
+        });
+        const clr = el("#th-clear");
+        if (clr) clr.onclick = () => { thFilter = {}; renderTongHop(state); };
         resultsArea.querySelectorAll(".th-yes").forEach(td => {
           td.onclick = () => {
             const tr = td.closest("tr");
@@ -2842,18 +2947,18 @@
             const d = document.createElement("tr");
             d.className = "th-detail";
             d.dataset.thKey = key;
-            d.innerHTML = `<td colspan="${TH_SOURCES.length + 1}">${thDetailHtml(rows[Number(td.dataset.thI)], s)}</td>`;
+            d.innerHTML = `<td colspan="${TH_SOURCES.length + 2}">${thDetailHtml(allRows[Number(td.dataset.thI)], s)}</td>`;
             tr.after(d);
           };
         });
         el("#th-copy").onclick = async () => {
-          const text = [["Mã đơn", ...TH_SOURCES.map(s => s.label)].join("\t"), ...rows.map(r => [r.order_code, ...TH_SOURCES.map(s => r[s.k].length ? s.brief(r[s.k]) : "")].join("\t"))].join("\n");
+          const text = [["Mã đơn", ...TH_SOURCES.map(s => s.label), "Cần xử lý"].join("\t"), ...rows.map(r => [r.order_code, ...TH_SOURCES.map(s => r[s.k].length ? s.brief(r[s.k]) : ""), thTodo(r).join("; ")].join("\t"))].join("\n");
           try { await navigator.clipboard.writeText(text); el("#th-copy").textContent = "✓ Đã copy"; } catch (e) { el("#th-copy").textContent = "Không copy được"; }
           setTimeout(() => { const b = el("#th-copy"); if (b) b.textContent = "Copy kết quả"; }, 1500);
         };
         el("#th-xlsx").onclick = () => {
           const wb = XLSX.utils.book_new();
-          const sum = [["Mã đơn", ...TH_SOURCES.map(s => s.label)], ...rows.map(r => [r.order_code, ...TH_SOURCES.map(s => r[s.k].length ? s.brief(r[s.k]) : "")])];
+          const sum = [["Mã đơn", ...TH_SOURCES.map(s => s.label), "Cần xử lý"], ...rows.map(r => [r.order_code, ...TH_SOURCES.map(s => r[s.k].length ? s.brief(r[s.k]) : ""), thTodo(r).join("; ")])];
           XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sum), "Tổng hợp");
           for (const s of TH_SOURCES) {
             const aoa = [["Mã đơn", ...s.fields.map(f => CONFIG.FIELD_LABELS[f] || f)]];
@@ -2891,6 +2996,7 @@
         currentPage = 1;
         lastElapsedMs = 0;
         const state = { tab: activeTab, codes, items: [], failed: [], ms: 0 };
+        if (activeTab === "tonghop") thFilter = {};
         await runChunks(state, codes, "Đang tra cứu");
         el("#btn-search").disabled = false;
         lastSearchState = state;
@@ -2907,7 +3013,7 @@
         const results = new Array(chunks.length);
         const paint = () => {
           const sec = ((Date.now() - t0) / 1000).toFixed(0);
-          resultsArea.innerHTML = `<div class="state loading"><span class="spinner"></span>${label}${chunks.length > 1 ? ` — xong ${done}/${chunks.length} lượt (${codes.length} mã, chạy ${Math.min(TAB_PARALLEL, chunks.length)} lượt cùng lúc) · đã tìm thấy ${found}` : "…"} · ⏱ ${sec}s</div>`;
+          resultsArea.innerHTML = `<div class="state loading"><span class="spinner"></span>${label}${chunks.length > 1 ? ` — xong ${done}/${chunks.length} lượt (${codes.length} mã, chạy ${Math.min(TAB_PARALLEL_BY[state.tab] || TAB_PARALLEL, chunks.length)} lượt cùng lúc) · đã tìm thấy ${found}` : "…"} · ⏱ ${sec}s</div>`;
         };
         paint();
         const ticker = setInterval(paint, 1000);
@@ -2932,7 +3038,7 @@
               const data = await res.json();
               if (data.ok === false) throw new Error(data.message || "Lỗi không xác định");
               const items = Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : [];
-              results[i] = { items, errors: data.errors };
+              results[i] = { items, errors: data.errors, sources: data.meta && data.meta.sources };
               found += new Set(items.map(it => String(it.order_code || it.ma_don || "").toUpperCase())).size;
             } catch (err) {
               results[i] = { error: err.message };
@@ -2941,12 +3047,13 @@
             paint();
           }
         };
-        await Promise.all(Array.from({ length: Math.min(TAB_PARALLEL, chunks.length) }, worker));
+        await Promise.all(Array.from({ length: Math.min(TAB_PARALLEL_BY[state.tab] || TAB_PARALLEL, chunks.length) }, worker));
         clearInterval(ticker);
         results.forEach((r, i) => {
           if (r && r.items) {
             state.items.push(...r.items);
             if (r.errors && Object.keys(r.errors).length) state.srcErrors = Object.assign(state.srcErrors || {}, r.errors);
+            if (r.sources) { state.srcMs = state.srcMs || {}; for (const [k, v] of Object.entries(r.sources)) state.srcMs[k] = (state.srcMs[k] || 0) + (v.ms || 0); }
           }
           else state.failed.push({ index: state.failed.length + 1, count: chunks[i].length, message: (r && r.error) || "Không rõ lỗi", codes: chunks[i] });
         });
