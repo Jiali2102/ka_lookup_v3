@@ -2169,7 +2169,7 @@
 
           <div class="chk-history-title"><span>🕘 Lịch sử gần đây</span><button class="h-clear-all" id="dv2-history-clear" title="Xóa toàn bộ lịch sử">🗑 Xóa tất cả</button></div>
           <div id="dv2-history-list"></div>
-          <div class="dv2-version">v3 · bản 2026-10-03.4</div>
+          <div class="dv2-version">v3 · bản 2026-10-03.5</div>
         </div>
 
         <div id="chk-mode-panel-pod" style="display:none;">
@@ -2727,7 +2727,7 @@
             if (f === cfg.statusField) return `<td class="badge-cell"><span class="badge${sClass ? " " + sClass : ""}">${raw}</span></td>`;
             return `<td>${raw}</td>`;
           }).join("");
-          return `<tr><td class="code-cell">${code}${dupBadge}</td>${cells}</tr>`;
+          return `<tr><td class="code-cell"><a class="ticket-link" href="${ORDER_LINK(code)}" target="_blank" rel="noopener" title="Mở tra cứu nội bộ">${code}</a>${dupBadge}</td>${cells}</tr>`;
         }).join("");
         const pageJumpOptions = Array.from({
           length: totalPages
@@ -2800,7 +2800,8 @@
         }
       }
       const CODES_PER_REQUEST = 1e3;
-      const TAB_CHUNK = { tonghop: 300, denbu: 300, miencuoc: 300, ticket: 300, quahan: 300, fake_attempt: 300 };
+      const ORDER_LINK = code => `https://tracuunoibo.ghn.vn/internal?order_code=${encodeURIComponent(String(code || "").trim())}`;
+      const TAB_CHUNK = { tonghop: 500, denbu: 1000, miencuoc: 1000, ticket: 1000, quahan: 1000, fake_attempt: 1000 };
       const TAB_PARALLEL_BY = { tonghop: 1 };
       const TAB_PARALLEL = 2;
       let lastElapsedMs = 0;
@@ -2889,7 +2890,7 @@
         const body = rows.map(r => {
           const i = allRows.indexOf(r);
           const todo = thTodo(r);
-          return `<tr data-th-row="${i}"><td class="code-cell">${thEsc(r.order_code)}</td>${TH_SOURCES.map(s => r[s.k].length
+          return `<tr data-th-row="${i}"><td class="code-cell"><a class="ticket-link" href="${ORDER_LINK(r.order_code)}" target="_blank" rel="noopener" title="Mở tra cứu nội bộ">${thEsc(r.order_code)}</a></td>${TH_SOURCES.map(s => r[s.k].length
             ? `<td class="th-yes" data-th-i="${i}" data-th-k="${s.k}" title="Bấm để xem chi tiết">✅ ${thEsc(s.brief(r[s.k]))}</td>`
             : `<td class="th-no">—</td>`).join("")}<td class="th-todo">${todo.map(t => `<span class="th-todo-tag">${thEsc(t)}</span>`).join("")}</td></tr>`;
         }).join("");
