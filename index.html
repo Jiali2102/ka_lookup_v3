@@ -2105,7 +2105,7 @@
 
           <div class="chk-history-title"><span>🕘 Lịch sử gần đây</span><button class="h-clear-all" id="dv2-history-clear" title="Xóa toàn bộ lịch sử">🗑 Xóa tất cả</button></div>
           <div id="dv2-history-list"></div>
-          <div class="dv2-version">v3 · bản 2026-10-03.1</div>
+          <div class="dv2-version">v3 · bản 2026-10-03.2</div>
         </div>
 
         <div id="chk-mode-panel-pod" style="display:none;">
@@ -2589,7 +2589,7 @@
           const foundSet = new Set(allItems.map(i => getCode(i).toString().toUpperCase()));
           const foundCount = lastRequestedCodes.filter(c => foundSet.has(c.toUpperCase())).length;
           notFoundCodes = lastRequestedCodes.filter(c => !foundSet.has(c.toUpperCase()));
-          statsHtml = `\n      <div class="stats">\n        <span class="stat-badge total">Tổng mã đơn: ${lastRequestedCodes.length}</span>\n        <span class="stat-badge found">Có kết quả: ${foundCount}</span>\n        <span class="stat-badge notfound">Không có kết quả: ${notFoundCodes.length}</span>\n      </div>`;
+          statsHtml = `\n      <div class="stats">\n        <span class="stat-badge total">Tổng mã đơn: ${lastRequestedCodes.length}</span>\n        <span class="stat-badge found">Có kết quả: ${foundCount}</span>\n        <span class="stat-badge notfound">Không có kết quả: ${notFoundCodes.length}</span>\n        ${lastElapsedMs ? `<span class="stat-badge" title="Tổng thời gian tra cứu">⏱ ${(lastElapsedMs / 1000).toFixed(1)}s</span>` : ""}\n      </div>`;
         }
         renderNotFound(notFoundCodes);
         if (!allItems.length) {
@@ -2726,6 +2726,10 @@
         }
       }
       const CODES_PER_REQUEST = 1e3;
+      const TAB_CHUNK = { denbu: 300, miencuoc: 300, ticket: 500, quahan: 1e3, fake_attempt: 1e3 };
+      const TAB_PARALLEL = 2;
+      let lastElapsedMs = 0;
+      let lastSearchState = null;
       function chunkArray(arr, size) {
         const out = [];
         for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -2751,50 +2755,98 @@
         }
         el("#btn-search").disabled = true;
         currentPage = 1;
-        const codeChunks = codes.length > CODES_PER_REQUEST ? chunkArray(codes, CODES_PER_REQUEST) : [codes];
-        const totalChunks = codeChunks.length;
-        let allItems = [];
-        const failedChunks = [];
-        for (let i = 0; i < totalChunks; i++) {
-          const chunk = codeChunks[i];
-          resultsArea.innerHTML = `<div class="state loading"><span class="spinner"></span>Đang tra cứu${totalChunks > 1 ? ` — lượt ${i + 1}/${totalChunks} (${chunk.length} mã)` : "..."}</div>`;
-          const params = new URLSearchParams({
-            t: TYPE_WIRE_MAP[activeTab] || activeTab,
-            c: chunk.join(","),
-            e: sessionEmail,
-            k: sessionPassword
-          });
-          if (cfg.useDateRange) {
-            if (dateFrom.value) params.set("f", dateFrom.value);
-            if (dateTo.value) params.set("g", dateTo.value);
-          }
-          try {
-            const res = await fetch(`${CONFIG.WEBHOOK_URL}?${params.toString()}`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
-            if (data.ok === false) throw new Error(data.message || "Lỗi không xác định");
-            const items = Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : [];
-            allItems.push(...items);
-          } catch (err) {
-            failedChunks.push({
-              index: i + 1,
-              count: chunk.length,
-              message: err.message
-            });
-          }
-        }
+        lastElapsedMs = 0;
+        const state = { tab: activeTab, codes, items: [], failed: [], ms: 0 };
+        await runChunks(state, codes, "Đang tra cứu");
         el("#btn-search").disabled = false;
-        if (failedChunks.length === totalChunks) {
-          const msg = failedChunks[0].message;
-          resultsArea.innerHTML = `<div class="state error">⚠️ Không thể tải dữ liệu: ${msg}<br/><span style="font-size:14.5px;">Kiểm tra lại URL webhook trong cấu hình, hoặc n8n workflow có đang bật không.</span></div>`;
+        lastSearchState = state;
+        renderAfterSearch(state);
+      }
+
+      async function runChunks(state, codes, label) {
+        const cfg = CONFIG.TABS[state.tab];
+        const size = TAB_CHUNK[state.tab] || CODES_PER_REQUEST;
+        const chunks = codes.length > size ? chunkArray(codes, size) : [codes];
+        const t0 = Date.now();
+        let done = 0;
+        let found = 0;
+        const results = new Array(chunks.length);
+        const paint = () => {
+          const sec = ((Date.now() - t0) / 1000).toFixed(0);
+          resultsArea.innerHTML = `<div class="state loading"><span class="spinner"></span>${label}${chunks.length > 1 ? ` — xong ${done}/${chunks.length} lượt (${codes.length} mã, chạy ${Math.min(TAB_PARALLEL, chunks.length)} lượt cùng lúc) · đã tìm thấy ${found}` : "…"} · ⏱ ${sec}s</div>`;
+        };
+        paint();
+        const ticker = setInterval(paint, 1000);
+        let cursor = 0;
+        const worker = async () => {
+          while (cursor < chunks.length) {
+            const i = cursor++;
+            const chunk = chunks[i];
+            const params = new URLSearchParams({
+              t: TYPE_WIRE_MAP[state.tab] || state.tab,
+              c: chunk.join(","),
+              e: sessionEmail,
+              k: sessionPassword
+            });
+            if (cfg.useDateRange) {
+              if (dateFrom.value) params.set("f", dateFrom.value);
+              if (dateTo.value) params.set("g", dateTo.value);
+            }
+            try {
+              const res = await fetch(`${CONFIG.WEBHOOK_URL}?${params.toString()}`);
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const data = await res.json();
+              if (data.ok === false) throw new Error(data.message || "Lỗi không xác định");
+              const items = Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : [];
+              results[i] = { items };
+              found += new Set(items.map(it => String(it.order_code || it.ma_don || "").toUpperCase())).size;
+            } catch (err) {
+              results[i] = { error: err.message };
+            }
+            done++;
+            paint();
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(TAB_PARALLEL, chunks.length) }, worker));
+        clearInterval(ticker);
+        results.forEach((r, i) => {
+          if (r && r.items) state.items.push(...r.items);
+          else state.failed.push({ index: state.failed.length + 1, count: chunks[i].length, message: (r && r.error) || "Không rõ lỗi", codes: chunks[i] });
+        });
+        state.ms += Date.now() - t0;
+      }
+
+      function renderAfterSearch(state) {
+        lastElapsedMs = state.ms;
+        const failedCodes = state.failed.reduce((n, f) => n + f.count, 0);
+        if (!state.items.length && state.failed.length && failedCodes >= state.codes.length) {
+          resultsArea.innerHTML = `<div class="state error">⚠️ Không thể tải dữ liệu: ${state.failed[0].message}<br/><span style="font-size:14.5px;">Thời gian: ${(state.ms / 1000).toFixed(1)}s. Kiểm tra n8n workflow có đang bật không, rồi thử lại.</span><div style="margin-top:10px;"><button class="btn-ghost" id="btn-retry-failed">🔁 Tra lại ${failedCodes} mã</button></div></div>`;
           el("#notfound-area").innerHTML = "";
+          bindRetry(state);
           return;
         }
-        renderResults(allItems, codes);
-        if (failedChunks.length) {
-          const failNote = failedChunks.map(f => `lượt ${f.index} (${f.count} mã, lỗi: ${f.message})`).join("; ");
-          resultsArea.innerHTML += `<div class="state error" style="margin-top:10px;">⚠️ ${failedChunks.length}/${totalChunks} lượt tra cứu bị lỗi, kết quả có thể chưa đầy đủ: ${failNote}. Thử tra cứu lại để bổ sung phần còn thiếu.</div>`;
+        renderResults(state.items, state.codes);
+        if (state.failed.length) {
+          const failNote = state.failed.map(f => `lượt ${f.index} (${f.count} mã, lỗi: ${f.message})`).join("; ");
+          resultsArea.insertAdjacentHTML("beforeend", `<div class="state error" style="margin-top:10px;">⚠️ ${state.failed.length} lượt bị lỗi (${failedCodes} mã chưa tra được), kết quả có thể chưa đầy đủ: ${failNote}<div style="margin-top:8px;"><button class="btn-ghost" id="btn-retry-failed">🔁 Tra lại ${failedCodes} mã bị lỗi</button></div></div>`);
+          bindRetry(state);
         }
+      }
+
+      function bindRetry(state) {
+        const b = el("#btn-retry-failed");
+        if (!b) return;
+        b.onclick = async () => {
+          if (state.tab !== activeTab) return;
+          const codes = state.failed.flatMap(f => f.codes || []);
+          state.failed = [];
+          el("#btn-search").disabled = true;
+          await runChunks(state, codes, "Đang tra lại các lượt lỗi");
+          el("#btn-search").disabled = false;
+          const seen = new Set();
+          state.items = state.items.filter(it => { const k = JSON.stringify(it); if (seen.has(k)) return false; seen.add(k); return true; });
+          renderAfterSearch(state);
+        };
       }
       el("#btn-search").onclick = doSearch;
       el("#btn-clear").onclick = () => {
