@@ -135,6 +135,93 @@
       flex-shrink: 0;
     }
 
+    .rail-version {
+      margin-top: 8px;
+      font-size: 10.5px;
+      line-height: 1.35;
+      color: var(--muted);
+      text-align: center;
+      flex-shrink: 0;
+      user-select: all;
+    }
+
+    .upd-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: rgba(15, 23, 42, .45);
+    }
+
+    .upd-card {
+      width: 100%;
+      max-width: 460px;
+      background: var(--surface, #fff);
+      color: var(--text, #1A1A1A);
+      border-radius: 16px;
+      padding: 22px 22px 18px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, .25);
+      font-family: Cambria, Georgia, serif;
+    }
+
+    .upd-card h3 {
+      margin: 0 0 8px;
+      font-size: 19px;
+      color: var(--orange, #FE5F00);
+    }
+
+    .upd-card p {
+      margin: 0 0 10px;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+
+    .upd-card ul {
+      margin: 0 0 12px;
+      padding-left: 20px;
+      font-size: 14.5px;
+      line-height: 1.6;
+    }
+
+    .upd-check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      margin: 6px 0 14px;
+      cursor: pointer;
+    }
+
+    .upd-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .upd-actions button {
+      font-family: inherit;
+      font-size: 14.5px;
+      font-weight: 700;
+      padding: 8px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      border: 1.5px solid var(--orange, #FE5F00);
+    }
+
+    .upd-primary {
+      background: var(--orange, #FE5F00);
+      color: #fff;
+    }
+
+    .upd-ghost {
+      background: transparent;
+      color: var(--orange, #FE5F00);
+    }
+
     .rail-logout:hover {
       color: var(--danger);
       border-color: var(--danger);
@@ -526,6 +613,11 @@
       .rail-logout {
         margin-top: 0;
         margin-left: auto;
+      }
+
+      .rail-version {
+        margin: 0 0 0 8px;
+        align-self: center;
       }
 
       .side-panel,
@@ -2066,7 +2158,8 @@
         <div class="rail-mark">JL212</div>
         <div class="tab" id="tab-checker">🔎 Kiểm tra đơn</div>
         <div class="tabs" id="tabs"></div>
-        <button type="button" id="btn-logout" class="rail-logout" title="Đăng xuất">⏻</button>
+        <button type="button" id="btn-logout" class="rail-logout" title="Đăng xuất"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v9"/><path d="M6.2 6.8a8 8 0 1 0 11.6 0"/></svg></button>
+        <div class="rail-version" title="Phiên bản tool">v3 · bản<br>2026-10-04.1</div>
       </div>
 
       <div class="side-panel" id="side-panel-normal">
@@ -2169,7 +2262,6 @@
 
           <div class="chk-history-title"><span>🕘 Lịch sử gần đây</span><button class="h-clear-all" id="dv2-history-clear" title="Xóa toàn bộ lịch sử">🗑 Xóa tất cả</button></div>
           <div id="dv2-history-list"></div>
-          <div class="dv2-version">v3 · bản 2026-10-03.5</div>
         </div>
 
         <div id="chk-mode-panel-pod" style="display:none;">
@@ -4879,6 +4971,48 @@
       target.appendChild(ripple);
       setTimeout(() => ripple.remove(), 550);
     });
+  </script>
+  <script>
+    (function () {
+      const KEY = "ka_lookup_update_notice_v3";
+      let seen = false;
+      try { seen = localStorage.getItem(KEY) === "1"; } catch (e) { }
+      if (seen) return;
+      const show = () => {
+        const wrap = document.createElement("div");
+        wrap.className = "upd-overlay";
+        wrap.innerHTML = `
+          <div class="upd-card" role="dialog" aria-modal="true" aria-labelledby="upd-title">
+            <h3 id="upd-title">🎉 Tool tra cứu đã có phiên bản mới</h3>
+            <p>Hệ thống vừa được nâng cấp lên <b>v3</b>:</p>
+            <ul>
+              <li>Dữ liệu tra cứu cập nhật trực tiếp, nhanh hơn</li>
+              <li>Thêm tab <b>Tổng hợp</b>: xem cùng lúc đền bù, quá hạn, miễn cước, ticket, fake attempt</li>
+              <li>Mở được tab <b>Miễn cước</b></li>
+            </ul>
+            <p><b>Vui lòng đăng xuất và đăng nhập lại</b> để nhận mật khẩu mới. Mật khẩu của phiên bản cũ không còn sử dụng được.</p>
+            <label class="upd-check"><input type="checkbox" id="upd-dont"> Tôi đã đăng nhập lại, không nhắc lại thông báo này</label>
+            <div class="upd-actions">
+              <button type="button" class="upd-ghost" id="upd-close">Đóng</button>
+              <button type="button" class="upd-primary" id="upd-relogin">Đăng nhập lại ngay</button>
+            </div>
+          </div>`;
+        document.body.appendChild(wrap);
+        const close = () => {
+          if (document.getElementById("upd-dont").checked) {
+            try { localStorage.setItem(KEY, "1"); } catch (e) { }
+          }
+          wrap.remove();
+        };
+        document.getElementById("upd-close").onclick = close;
+        document.getElementById("upd-relogin").onclick = () => {
+          close();
+          if (typeof doLogout === "function") doLogout();
+        };
+      };
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", show);
+      else show();
+    })();
   </script>
 </body>
 
