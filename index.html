@@ -4853,8 +4853,14 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-10-16.1";
+    const APP_BUILD = "2026-10-16.2";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
+  </script>
+  <script>window.addEventListener("keydown", e => {
+      if ((e.ctrlKey || e.metaKey) && String(e.key || "").toLowerCase() === "s") {
+        e.preventDefault();
+      }
+    }, true);
   </script>
 </body>
 
