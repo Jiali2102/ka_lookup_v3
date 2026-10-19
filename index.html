@@ -767,6 +767,70 @@
       }
     }
 
+    .th-table td.th-yes {
+      cursor: pointer;
+      color: #1E7B45;
+      font-weight: 600;
+    }
+
+    .th-table td.th-yes:hover,
+    .th-table td.th-open {
+      background: #E9F7EF;
+    }
+
+    .th-table td.th-no {
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .th-chip {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .th-chip.th-chip-has {
+      background: var(--orange);
+      border-color: var(--orange);
+      color: #fff;
+    }
+
+    .th-chip.th-chip-not {
+      background: #4B5563;
+      border-color: #4B5563;
+      color: #fff;
+    }
+
+    .th-chip-rule {
+      background: #FFF4E5;
+      border-color: #F5B971;
+      color: #9A4A00;
+    }
+
+    .th-filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 0 0 10px;
+      font-size: 14.5px;
+    }
+
+    .th-todo-tag {
+      display: inline-block;
+      margin: 2px 4px 2px 0;
+      padding: 1px 8px;
+      border-radius: 999px;
+      background: #FFF4E5;
+      color: #9A4A00;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .th-table tr.th-detail > td {
+      background: var(--bg);
+    }
+
     label.field-label {
       display: block;
       font-size: 14px;
@@ -2237,6 +2301,15 @@
       const CONFIG = {
         WEBHOOK_URL: WEBHOOK_BASE_URL,
         TABS: {
+          tonghop: {
+            label: "Tổng hợp",
+            hint: "Dán mã đơn để xem cùng lúc đền bù, quá hạn, miễn cước, ticket và fake attempt. Bấm ô ✅ để xem chi tiết.",
+            useDateRange: false,
+            knownFields: [],
+            amountFields: [],
+            dateFields: [],
+            statusField: null
+          },
           denbu: {
             label: "Đền bù",
             useDateRange: false,
@@ -2293,6 +2366,8 @@
           overdue_date: "Ngày chốt quá hạn",
           ly_do: "Lý do",
           so_tien_mien: "Số tiền miễn",
+          thang_mien_cuoc: "Tháng miễn cước",
+          loai_don_hang: "Loại đơn hàng",
           trang_thai: "Trạng thái",
           client_name: "Client / Team",
           reason_type: "Lý do",
@@ -2379,6 +2454,7 @@
           currentPage = 1;
           updateCount();
         }
+        if (key === "tonghop" && tongHopState) renderTongHop(tongHopState);
       }
       function updateCount() {
         const n = parseCodes(codesInput.value).length;
@@ -2806,6 +2882,258 @@
         for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
         return out;
       }
+      const ORDER_LINK = code => `https://tracuunoibo.ghn.vn/internal?order_code=${encodeURIComponent(String(code || "").trim())}`;
+      const TH_CHUNK = 500;
+      let lastElapsedMs = 0;
+      let tongHopState = null;
+      const TH_RULES = [
+        { label: "Quá hạn chưa đền bù", test: r => r.qua_han.length && !r.den_bu.length },
+        { label: "Ticket hư hỏng/mất chưa đền bù", test: r => !r.den_bu.length && r.ticket.some(t => /hư hỏng|mất|thiếu|tráo/i.test(t.reason_type || "")) },
+        { label: "Đền bù âm", test: r => r.den_bu.length && r.den_bu.reduce((s, e) => s + (Number(e.so_tien) || 0), 0) < 0 },
+        { label: "Đền bù 0đ", test: r => r.den_bu.length && r.den_bu.reduce((s, e) => s + (Number(e.so_tien) || 0), 0) === 0 }
+      ];
+      let thFilter = {};
+      const thTodo = r => TH_RULES.filter(x => x.test(r)).map(x => x.label);
+      function thPass(r) {
+        for (const [k, v] of Object.entries(thFilter)) {
+          if (k.startsWith("rule:")) {
+            const rule = TH_RULES.find(x => `rule:${x.label}` === k);
+            if (rule && !rule.test(r)) return false;
+            continue;
+          }
+          const has = (r[k] || []).length > 0;
+          if (v === "has" && !has) return false;
+          if (v === "not" && has) return false;
+        }
+        return true;
+      }
+      function thFilterText() {
+        const parts = Object.entries(thFilter).map(([k, v]) => {
+          if (k.startsWith("rule:")) return `🟠 ${k.slice(5)}`;
+          const s = TH_SOURCES.find(x => x.k === k);
+          return `${v === "has" ? "có" : "chưa có"} ${s ? s.label : k}`;
+        });
+        return parts.join(" · ");
+      }
+      const TH_SOURCES = [
+        { k: "den_bu", label: "Đền bù", fields: ["so_tien", "loai_yeu_cau", "ngay_duyet"], brief: list => formatMoney(list.reduce((s, e) => s + (Number(e.so_tien) || 0), 0)) },
+        { k: "qua_han", label: "Quá hạn", fields: ["reason", "overdue_date"], brief: list => list.map(e => e.overdue_date).filter(Boolean).sort().slice(-1)[0] || "Có" },
+        { k: "mien_cuoc", label: "Miễn cước", fields: ["so_tien_mien", "thang_mien_cuoc", "ly_do", "loai_don_hang"], brief: list => formatMoney(list.reduce((s, e) => s + (Number(e.so_tien_mien) || 0), 0)) },
+        { k: "ticket", label: "Ticket", fields: ["client_name", "reason_type", "first_article_from", "ticket_url"], brief: list => `${list.length} ticket` },
+        { k: "fake", label: "Fake Attempt", fields: ["month", "client_type"], brief: list => [...new Set(list.map(e => String(e.month || "").slice(0, 7)))].join(", ") }
+      ];
+      function thEsc(v) {
+        return String(v ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+      }
+      function thRows(state) {
+        const by = new Map();
+        for (const it of state.items) {
+          const key = String(it.order_code || "").toUpperCase();
+          const cur = by.get(key) || { order_code: key, den_bu: [], qua_han: [], mien_cuoc: [], ticket: [], fake: [] };
+          for (const s of TH_SOURCES) cur[s.k].push(...(it[s.k] || []));
+          by.set(key, cur);
+        }
+        return state.codes.map(c => by.get(c.toUpperCase()) || { order_code: c.toUpperCase(), den_bu: [], qua_han: [], mien_cuoc: [], ticket: [], fake: [] });
+      }
+      function thDetailHtml(row, s) {
+        const list = row[s.k] || [];
+        const head = s.fields.map(f => `<th>${thEsc(CONFIG.FIELD_LABELS[f] || f)}</th>`).join("");
+        const body = list.map(e => `<tr>${s.fields.map(f => {
+          const v = e[f];
+          if (f === "ticket_url" && v) return `<td><a class="ticket-link" href="${thEsc(v)}" target="_blank" rel="noopener">Mở ticket</a></td>`;
+          if (f === "so_tien" || f === "so_tien_mien") return `<td class="amount-cell">${thEsc(formatMoney(v))}</td>`;
+          return `<td>${thEsc(v)}</td>`;
+        }).join("")}</tr>`).join("");
+        return `<div style="padding:8px 4px;"><b>${thEsc(s.label)} · ${thEsc(row.order_code)}</b> (${list.length} dòng)<div class="results-table-wrap" style="margin-top:6px;"><table class="result-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div></div>`;
+      }
+      function renderTongHop(state) {
+        tongHopState = state;
+        lastFullItems = [];
+        lastRequestedCodes = [];
+        lastElapsedMs = state.ms;
+        const allRows = thRows(state);
+        const rows = allRows.filter(thPass);
+        const count = k => allRows.filter(r => r[k].length).length;
+        const empty = allRows.filter(r => TH_SOURCES.every(s => !r[s.k].length)).length;
+        const srcErr = Object.entries(state.srcErrors || {});
+        const SRC_LABEL = { denbu: "Đền bù", quahan: "Quá hạn", mc: "Miễn cước", ticket: "Ticket", fake: "Fake Attempt" };
+        const msTitle = state.srcMs ? Object.entries(state.srcMs).map(([k, v]) => `${SRC_LABEL[k] || k}: ${(v / 1000).toFixed(1)}s`).join(" · ") : "Tổng thời gian tra cứu";
+        const chip = s => {
+          const v = thFilter[s.k];
+          const cls = v === "has" ? " th-chip-has" : v === "not" ? " th-chip-not" : "";
+          const prefix = v === "not" ? "Chưa có " : "";
+          return `<span class="stat-badge found th-chip${cls}" data-th-chip="${s.k}" title="Bấm: có → chưa có → bỏ lọc · Ctrl + bấm để kết hợp">${prefix}${thEsc(s.label)}: ${v === "not" ? allRows.length - count(s.k) : count(s.k)}</span>`;
+        };
+        const ruleCounts = TH_RULES.map(x => [x, allRows.filter(x.test).length]).filter(([, n]) => n);
+        const ruleChip = ([x, n]) => `<span class="stat-badge th-chip th-chip-rule${thFilter[`rule:${x.label}`] ? " th-chip-has" : ""}" data-th-chip="rule:${thEsc(x.label)}" title="Bấm để lọc · Ctrl + bấm để kết hợp">🟠 ${thEsc(x.label)}: ${n}</span>`;
+        const body = rows.map(r => {
+          const i = allRows.indexOf(r);
+          const todo = thTodo(r);
+          return `<tr data-th-row="${i}"><td class="code-cell"><a class="ticket-link" href="${ORDER_LINK(r.order_code)}" target="_blank" rel="noopener" title="Mở tra cứu nội bộ">${thEsc(r.order_code)}</a></td>${TH_SOURCES.map(s => r[s.k].length
+            ? `<td class="th-yes" data-th-i="${i}" data-th-k="${s.k}" title="Bấm để xem chi tiết">✅ ${thEsc(s.brief(r[s.k]))}</td>`
+            : `<td class="th-no">—</td>`).join("")}<td class="th-todo">${todo.map(t => `<span class="th-todo-tag">${thEsc(t)}</span>`).join("")}</td></tr>`;
+        }).join("");
+        const filterOn = Object.keys(thFilter).length;
+        resultsArea.innerHTML = `
+          <div class="toolbar">
+            <div class="stats">
+              <span class="stat-badge total">Tổng mã đơn: ${allRows.length}</span>
+              ${TH_SOURCES.map(chip).join("")}
+              <span class="stat-badge notfound">Không có dữ liệu: ${empty}</span>
+              ${state.ms ? `<span class="stat-badge" title="${thEsc(msTitle)}">⏱ ${(state.ms / 1000).toFixed(1)}s</span>` : ""}
+            </div>
+            <div class="toolbar-actions">
+              <button class="btn-ghost" id="th-copy">Copy kết quả</button>
+              <button class="btn-ghost" id="th-xlsx">⬇ Tải Excel</button>
+            </div>
+          </div>
+          ${ruleCounts.length ? `<div class="stats" style="margin:0 0 10px;">${ruleCounts.map(ruleChip).join("")}</div>` : ""}
+          ${filterOn ? `<div class="th-filter-bar">Đang lọc: <b>${thEsc(thFilterText())}</b> · ${rows.length}/${allRows.length} mã <button class="btn-ghost" id="th-clear">✕ Bỏ lọc</button></div>` : ""}
+          <div class="results-table-wrap">
+            <table class="result-table th-table">
+              <thead><tr><th>Mã đơn</th>${TH_SOURCES.map(s => `<th>${thEsc(s.label)}</th>`).join("")}<th>Cần xử lý</th></tr></thead>
+              <tbody>${body || `<tr><td colspan="${TH_SOURCES.length + 2}" class="th-no">Không có mã nào khớp bộ lọc</td></tr>`}</tbody>
+            </table>
+          </div>
+          ${srcErr.length ? `<div class="state error" style="margin-top:10px;">⚠️ Một số nguồn bị lỗi, cột tương ứng có thể thiếu: ${srcErr.map(([k, v]) => `${thEsc(k)}: ${thEsc(v)}`).join("; ")}</div>` : ""}`;
+        renderNotFound([]);
+        resultsArea.querySelectorAll("[data-th-chip]").forEach(c => {
+          c.onclick = e => {
+            const k = c.dataset.thChip;
+            const isRule = k.startsWith("rule:");
+            const curV = thFilter[k];
+            const nextV = isRule ? (curV ? null : "has") : (!curV ? "has" : curV === "has" ? "not" : null);
+            if (!(e.ctrlKey || e.metaKey)) thFilter = {};
+            if (nextV) thFilter[k] = nextV; else delete thFilter[k];
+            renderTongHop(state);
+          };
+        });
+        const clr = el("#th-clear");
+        if (clr) clr.onclick = () => { thFilter = {}; renderTongHop(state); };
+        resultsArea.querySelectorAll(".th-yes").forEach(td => {
+          td.onclick = () => {
+            const tr = td.closest("tr");
+            const next = tr.nextElementSibling;
+            const key = `${td.dataset.thI}-${td.dataset.thK}`;
+            if (next && next.classList.contains("th-detail")) {
+              const same = next.dataset.thKey === key;
+              next.remove();
+              resultsArea.querySelectorAll(".th-yes.th-open").forEach(x => x.classList.remove("th-open"));
+              if (same) return;
+            }
+            resultsArea.querySelectorAll(".th-yes.th-open").forEach(x => x.classList.remove("th-open"));
+            td.classList.add("th-open");
+            const s = TH_SOURCES.find(x => x.k === td.dataset.thK);
+            const d = document.createElement("tr");
+            d.className = "th-detail";
+            d.dataset.thKey = key;
+            d.innerHTML = `<td colspan="${TH_SOURCES.length + 2}">${thDetailHtml(allRows[Number(td.dataset.thI)], s)}</td>`;
+            tr.after(d);
+          };
+        });
+        el("#th-copy").onclick = async () => {
+          const text = [["Mã đơn", ...TH_SOURCES.map(s => s.label), "Cần xử lý"].join("\t"), ...rows.map(r => [r.order_code, ...TH_SOURCES.map(s => r[s.k].length ? s.brief(r[s.k]) : ""), thTodo(r).join("; ")].join("\t"))].join("\n");
+          try { await navigator.clipboard.writeText(text); el("#th-copy").textContent = "✓ Đã copy"; } catch (e) { el("#th-copy").textContent = "Không copy được"; }
+          setTimeout(() => { const b = el("#th-copy"); if (b) b.textContent = "Copy kết quả"; }, 1500);
+        };
+        el("#th-xlsx").onclick = () => {
+          const wb = XLSX.utils.book_new();
+          const sum = [["Mã đơn", ...TH_SOURCES.map(s => s.label), "Cần xử lý"], ...rows.map(r => [r.order_code, ...TH_SOURCES.map(s => r[s.k].length ? s.brief(r[s.k]) : ""), thTodo(r).join("; ")])];
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sum), "Tổng hợp");
+          for (const s of TH_SOURCES) {
+            const aoa = [["Mã đơn", ...s.fields.map(f => CONFIG.FIELD_LABELS[f] || f)]];
+            for (const r of rows) for (const e of r[s.k]) aoa.push([r.order_code, ...s.fields.map(f => e[f] ?? "")]);
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), s.label.slice(0, 31));
+          }
+          const stamp = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" }).replace(/[-: ]/g, "");
+          XLSX.writeFile(wb, `tong_hop_${stamp}.xlsx`);
+        };
+      }
+      async function thRunChunks(state, codes, label) {
+        const chunks = chunkArray(codes, TH_CHUNK);
+        const t0 = Date.now();
+        let done = 0;
+        let found = 0;
+        const results = new Array(chunks.length);
+        const paint = () => {
+          const sec = ((Date.now() - t0) / 1000).toFixed(0);
+          resultsArea.innerHTML = `<div class="state loading"><span class="spinner"></span>${label}${chunks.length > 1 ? ` — xong ${done}/${chunks.length} lượt (${codes.length} mã) · đã tìm thấy ${found}` : "…"} · ⏱ ${sec}s</div>`;
+        };
+        paint();
+        const ticker = setInterval(paint, 1000);
+        for (let i = 0; i < chunks.length; i++) {
+          const params = new URLSearchParams({
+            t: TYPE_WIRE_MAP.tonghop,
+            c: chunks[i].join(","),
+            e: sessionEmail,
+            k: sessionPassword
+          });
+          try {
+            const res = await fetch(`${CONFIG.WEBHOOK_URL}?${params.toString()}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            if (data.ok === false) throw new Error(data.message || "Lỗi không xác định");
+            const items = Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : [];
+            results[i] = { items, errors: data.errors, sources: data.meta && data.meta.sources };
+            found += new Set(items.map(it => String(it.order_code || it.ma_don || "").toUpperCase())).size;
+          } catch (err) {
+            results[i] = { error: err.message };
+          }
+          done++;
+          paint();
+        }
+        clearInterval(ticker);
+        results.forEach((r, i) => {
+          if (r && r.items) {
+            state.items.push(...r.items);
+            if (r.errors && Object.keys(r.errors).length) state.srcErrors = Object.assign(state.srcErrors || {}, r.errors);
+            if (r.sources) { state.srcMs = state.srcMs || {}; for (const [k, v] of Object.entries(r.sources)) state.srcMs[k] = (state.srcMs[k] || 0) + (v.ms || 0); }
+          } else {
+            state.failed.push({ index: state.failed.length + 1, count: chunks[i].length, message: (r && r.error) || "Không rõ lỗi", codes: chunks[i] });
+          }
+        });
+        state.ms += Date.now() - t0;
+      }
+      function thRenderAfterSearch(state) {
+        lastElapsedMs = state.ms;
+        const failedCodes = state.failed.reduce((n, f) => n + f.count, 0);
+        if (!state.items.length && state.failed.length && failedCodes >= state.codes.length) {
+          resultsArea.innerHTML = `<div class="state error">⚠️ Không thể tải dữ liệu: ${thEsc(state.failed[0].message)}<br/><span style="font-size:14.5px;">Thời gian: ${(state.ms / 1000).toFixed(1)}s. Kiểm tra n8n workflow có đang bật không, rồi thử lại.</span><div style="margin-top:10px;"><button class="btn-ghost" id="btn-retry-failed">🔁 Tra lại ${failedCodes} mã</button></div></div>`;
+          renderNotFound([]);
+          thBindRetry(state);
+          return;
+        }
+        renderTongHop(state);
+        if (state.failed.length) {
+          const failNote = state.failed.map(f => `lượt ${f.index} (${f.count} mã, lỗi: ${thEsc(f.message)})`).join("; ");
+          resultsArea.insertAdjacentHTML("beforeend", `<div class="state error" style="margin-top:10px;">⚠️ ${state.failed.length} lượt bị lỗi (${failedCodes} mã chưa tra được), kết quả có thể chưa đầy đủ: ${failNote}<div style="margin-top:8px;"><button class="btn-ghost" id="btn-retry-failed">🔁 Tra lại ${failedCodes} mã bị lỗi</button></div></div>`);
+          thBindRetry(state);
+        }
+      }
+      function thBindRetry(state) {
+        const b = el("#btn-retry-failed");
+        if (!b) return;
+        b.onclick = async () => {
+          if (activeTab !== "tonghop") return;
+          const codes = state.failed.flatMap(f => f.codes || []);
+          state.failed = [];
+          el("#btn-search").disabled = true;
+          await thRunChunks(state, codes, "Đang tra lại các lượt lỗi");
+          el("#btn-search").disabled = false;
+          const seen = new Set();
+          state.items = state.items.filter(it => { const k = JSON.stringify(it); if (seen.has(k)) return false; seen.add(k); return true; });
+          thRenderAfterSearch(state);
+        };
+      }
+      async function runTongHop(codes) {
+        el("#btn-search").disabled = true;
+        lastElapsedMs = 0;
+        thFilter = {};
+        const state = { tab: "tonghop", codes, items: [], failed: [], ms: 0 };
+        await thRunChunks(state, codes, "Đang tra cứu");
+        el("#btn-search").disabled = false;
+        thRenderAfterSearch(state);
+      }
       async function doSearch() {
         const cfg = CONFIG.TABS[activeTab];
         if (cfg.notReady) {
@@ -2822,6 +3150,10 @@
         if (cfg.useDateRange && !codes.length && (!dateFrom.value || !dateTo.value)) {
           resultsArea.innerHTML = `<div class="empty"><div class="big">✏️</div>Nhập mã đơn hoặc chọn khoảng ngày để tra cứu.</div>`;
           el("#notfound-area").innerHTML = "";
+          return;
+        }
+        if (activeTab === "tonghop") {
+          await runTongHop(codes);
           return;
         }
         el("#btn-search").disabled = true;
@@ -2884,6 +3216,10 @@
         lastRequestedCodes = [];
         searchQuery = "";
         currentPage = 1;
+        if (activeTab === "tonghop") {
+          tongHopState = null;
+          thFilter = {};
+        }
         delete tabState[activeTab];
         updateCount();
       };
@@ -4695,6 +5031,7 @@
     let sessionPassword = "";
 
     const TYPE_WIRE_MAP = {
+      tonghop: "v8",
       denbu: "v2",
       quahan: "v3",
       ticket: "v4",
@@ -4853,7 +5190,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-10-16.2";
+    const APP_BUILD = "2026-10-19.1";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
