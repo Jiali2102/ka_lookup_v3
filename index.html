@@ -903,6 +903,72 @@
       padding: 0;
     }
 
+    .chk-auto-box {
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border: 1.5px dashed var(--orange);
+      border-radius: 10px;
+      background: #FFF9F4;
+    }
+
+    .chk-auto-box .btn-primary {
+      width: 100%;
+    }
+
+    .chk-auto-status {
+      margin: 8px 0 0;
+      font-size: 12.5px;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+
+    .chk-auto-status.ok {
+      color: var(--ok);
+    }
+
+    .chk-auto-status.error {
+      color: var(--danger);
+    }
+
+    .chk-paste-details {
+      margin-top: 8px;
+      font-size: 13px;
+    }
+
+    .chk-paste-details summary {
+      cursor: pointer;
+      font-weight: 700;
+      color: var(--blue);
+    }
+
+    .chk-paste-details textarea {
+      min-height: 84px;
+      margin-top: 6px;
+      font-size: 12.5px;
+    }
+
+    .chk-paste-details .btn-ghost {
+      margin-top: 6px;
+    }
+
+    .chk-cfg-actions {
+      display: flex;
+      gap: 12px;
+      flex: none;
+    }
+
+    .chk-cfg-meta {
+      display: block;
+      margin-top: 2px;
+      font-size: 11.5px;
+      font-weight: 400;
+      color: var(--muted);
+    }
+
+    .chk-cfg-meta.warn {
+      color: var(--danger);
+    }
+
     .chk-btn-comp {
       background: #FFF4E5 !important;
       border-color: var(--orange) !important;
@@ -2200,6 +2266,17 @@
         <p class="hint chk-hint-note" id="chk-hint-note">⚠️ = đơn &gt;5 ngày chưa cập nhật · Bấm Mã đơn để mở tra cứu nội bộ GHN · Bấm tên kho để copy nhanh ID</p>
 
         <div id="chk-config-fields">
+          <div class="chk-auto-box">
+            <button type="button" class="btn-primary" id="chk-btn-auto">⚡ Tự động lấy cấu hình</button>
+            <p class="chk-auto-status" id="chk-auto-status">Mở trang tra cứu nội bộ GHN ở tab nền, bắt Token và User-Agent rồi tự điền, tự lưu.</p>
+            <details class="chk-paste-details" id="chk-paste-details">
+              <summary>📋 Chưa cài tiện ích? Dán nhanh 1 lần</summary>
+              <p class="hint">Trong DevTools, bấm chuột phải dòng user-info → Copy → Copy request headers (hoặc Copy as cURL), rồi dán vào đây.</p>
+              <textarea id="chk-paste-input" placeholder="Dán nội dung đã copy..."></textarea>
+              <button type="button" class="btn-ghost" id="chk-btn-paste-apply">Tách và điền</button>
+            </details>
+          </div>
+
           <label class="field-label">User-Agent</label>
           <input type="text" id="chk-user-agent" class="chk-input" placeholder="User-Agent tài khoản của bạn" />
 
@@ -2210,8 +2287,11 @@
         </div>
 
         <div id="chk-config-summary" class="chk-config-summary" style="display:none;">
-          <span>🔒 Đã cấu hình User-Agent &amp; Token</span>
-          <button type="button" class="chk-edit-link" id="chk-btn-edit-config">Thay đổi</button>
+          <span>🔒 Đã cấu hình User-Agent &amp; Token<small class="chk-cfg-meta" id="chk-cfg-meta"></small></span>
+          <span class="chk-cfg-actions">
+            <button type="button" class="chk-edit-link" id="chk-btn-auto-refresh">⚡ Cập nhật</button>
+            <button type="button" class="chk-edit-link" id="chk-btn-edit-config">Thay đổi</button>
+          </span>
         </div>
 
         <div class="divider-or">sau đó</div>
@@ -3288,12 +3368,184 @@
         } catch (err) { }
       }
 
+      const CHK_CFG_META_KEY = "ka_lookup_chk_config_meta_v1";
+      const KA_SAMPLE_ORDER = "GYANE7Y8";
+      const KA_CAPTURE_TIMEOUT_MS = 28000;
+      const chkAutoStatus = el("#chk-auto-status");
+      const chkCfgMeta = el("#chk-cfg-meta");
+      const chkBtnAuto = el("#chk-btn-auto");
+      const chkBtnAutoRefresh = el("#chk-btn-auto-refresh");
+      const chkPasteDetails = el("#chk-paste-details");
+      const chkPasteInput = el("#chk-paste-input");
+      const chkBtnPasteApply = el("#chk-btn-paste-apply");
+      let chkAutoBusy = false;
+
+      function chkNowStamp() {
+        return new Date().toLocaleString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" });
+      }
+
+      function chkTokenExpiryMs(token) {
+        try {
+          const parts = String(token || "").split(".");
+          if (parts.length !== 3) return null;
+          const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+          const padded = b64 + "=".repeat((4 - b64.length % 4) % 4);
+          const bytes = Uint8Array.from(atob(padded), c => c.charCodeAt(0));
+          const payload = JSON.parse(new TextDecoder().decode(bytes));
+          return payload.exp ? payload.exp * 1000 : null;
+        } catch (err) {
+          return null;
+        }
+      }
+
+      function chkRenderCfgMeta() {
+        let meta = null;
+        try { meta = JSON.parse(localStorage.getItem(CHK_CFG_META_KEY) || "null"); } catch (err) { }
+        const parts = [];
+        if (meta && meta.at) parts.push("Cập nhật " + meta.at + (meta.source ? " · " + meta.source : ""));
+        const exp = chkTokenExpiryMs(chkTokenInput.value);
+        let warn = false;
+        if (exp) {
+          const stamp = new Date(exp).toLocaleString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" });
+          if (exp < Date.now()) {
+            parts.push("Token đã hết hạn lúc " + stamp);
+            warn = true;
+          } else {
+            parts.push("Token hết hạn lúc " + stamp);
+          }
+        }
+        chkCfgMeta.textContent = parts.join(" · ");
+        chkCfgMeta.classList.toggle("warn", warn);
+      }
+
+      function chkSetAutoStatus(text, kind) {
+        chkAutoStatus.textContent = text;
+        chkAutoStatus.className = "chk-auto-status" + (kind ? " " + kind : "");
+      }
+
+      function chkApplyAutoConfig(cfg, sourceLabel) {
+        chkUserAgentInput.value = String(cfg.userAgent || "").trim();
+        chkTokenInput.value = String(cfg.token || "").trim();
+        saveChkConfig();
+        try { localStorage.setItem(CHK_CFG_META_KEY, JSON.stringify({ at: chkNowStamp(), source: sourceLabel })); } catch (err) { }
+        updateChkConfigView();
+        chkRenderCfgMeta();
+        chkSetAutoStatus("Đã cập nhật cấu hình mới lúc " + chkNowStamp() + ".", "ok");
+        chkShowToast("Đã cập nhật cấu hình mới", 2500);
+      }
+
+      function chkParseHeaderText(raw) {
+        const text = String(raw || "").replace(/\^/g, "").replace(/\\\r?\n/g, "\n");
+        const byColon = name => {
+          const m = text.match(new RegExp("(?:^|[\\s'\"])" + name + "\\s*:\\s*([^'\"\\r\\n]+)", "i"));
+          return m ? m[1].trim() : "";
+        };
+        const byLine = name => {
+          const m = text.match(new RegExp("(?:^|\\n)\\s*" + name + "\\s*\\n\\s*([^\\r\\n]+)", "i"));
+          return m ? m[1].trim() : "";
+        };
+        return {
+          token: byColon("token") || byLine("token"),
+          userAgent: byColon("user-agent") || byLine("user-agent")
+        };
+      }
+
+      function kaHelperInstalled() {
+        return document.documentElement.dataset.kaHelper === "1";
+      }
+
+      function kaHelperCapture(orderCode, onStage) {
+        return new Promise(resolve => {
+          const reqId = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+          let timer = null;
+          const finish = result => {
+            clearTimeout(timer);
+            window.removeEventListener("message", onMessage);
+            resolve(result);
+          };
+          const onMessage = event => {
+            if (event.source !== window || event.origin !== location.origin) return;
+            const data = event.data;
+            if (!data || data.source !== "ka-helper" || data.reqId !== reqId) return;
+            if (data.type === "KA_PROGRESS") {
+              onStage(data.stage);
+              return;
+            }
+            if (data.type === "KA_CONFIG") {
+              finish(data.ok ? { ok: true, token: data.token, userAgent: data.userAgent } : { ok: false, error: data.error || "unknown" });
+            }
+          };
+          window.addEventListener("message", onMessage);
+          timer = setTimeout(() => finish({ ok: false, error: "timeout" }), KA_CAPTURE_TIMEOUT_MS);
+          window.postMessage({ source: "ka-lookup-page", type: "KA_CAPTURE", reqId, orderCode }, location.origin);
+        });
+      }
+
+      function chkShowAutoFailure(text) {
+        chkConfigFields.style.display = "block";
+        chkConfigSummary.style.display = "none";
+        chkPasteDetails.open = true;
+        chkSetAutoStatus(text, "error");
+      }
+
+      async function chkAutoFetch() {
+        if (chkAutoBusy) return;
+        if (!kaHelperInstalled()) {
+          chkShowAutoFailure("Chưa thấy tiện ích KA Lookup Helper. Cài tiện ích (chrome://extensions → bật Chế độ nhà phát triển → Tải tiện ích đã giải nén → chọn thư mục ka-lookup-helper) rồi tải lại trang, hoặc dùng ô Dán nhanh bên dưới.");
+          return;
+        }
+        chkAutoBusy = true;
+        chkBtnAuto.disabled = true;
+        chkBtnAutoRefresh.disabled = true;
+        chkSetAutoStatus("Đang gửi yêu cầu tới tiện ích...");
+        const firstCode = parseChkCodes(chkCodesInput.value)[0] || KA_SAMPLE_ORDER;
+        const result = await kaHelperCapture(firstCode, stage => {
+          chkSetAutoStatus(stage === "opening" ? "Đang mở trang tra cứu nội bộ GHN ở tab nền..." : "Đang đợi trang gửi yêu cầu user-info để bắt Token...");
+        });
+        chkAutoBusy = false;
+        chkBtnAuto.disabled = false;
+        chkBtnAutoRefresh.disabled = false;
+        if (result.ok && result.token) {
+          chkApplyAutoConfig(result, "tự động");
+          return;
+        }
+        const messages = {
+          timeout: "Chưa bắt được Token sau 28 giây. Kiểm tra đã đăng nhập trang tra cứu nội bộ GHN (và bật VPN nếu cần) rồi thử lại. Tab nền vẫn mở để anh đăng nhập.",
+          need_click: "Tiện ích chỉ chạy khi anh bấm nút. Bấm lại nút ⚡ giúp em.",
+          extension_error: "Tiện ích không phản hồi. Tải lại trang (Ctrl+F5) sau khi cài hoặc tải lại tiện ích."
+        };
+        chkShowAutoFailure(messages[result.error] || "Không lấy được cấu hình tự động. Dùng ô Dán nhanh bên dưới.");
+      }
+
+      chkBtnAuto.onclick = chkAutoFetch;
+      chkBtnAutoRefresh.onclick = chkAutoFetch;
+
+      chkBtnPasteApply.onclick = () => {
+        const parsed = chkParseHeaderText(chkPasteInput.value);
+        if (!parsed.token || !parsed.userAgent) {
+          const missing = !parsed.token && !parsed.userAgent ? "Token và User-Agent" : !parsed.token ? "Token" : "User-Agent";
+          chkSetAutoStatus("Không thấy " + missing + " trong nội dung dán. Dùng Copy → Copy request headers (hoặc Copy as cURL) của dòng user-info.", "error");
+          return;
+        }
+        chkApplyAutoConfig(parsed, "dán nhanh");
+        chkPasteInput.value = "";
+        chkPasteDetails.open = false;
+      };
+
+      function chkWarnAuthErrors() {
+        const bad = chkResults.filter(r => r.ok === false && /HTTP (401|403)/.test(String(r.message || ""))).length;
+        if (bad) chkShowToast(bad + " mã báo lỗi 401/403: Token có thể đã hết hạn. Bấm ⚡ Cập nhật rồi tra lại.", 7000);
+      }
+
       loadChkConfig();
       updateChkConfigView();
+      chkRenderCfgMeta();
 
       el("#chk-btn-save-config").onclick = () => {
         saveChkConfig();
+        try { localStorage.setItem(CHK_CFG_META_KEY, JSON.stringify({ at: chkNowStamp(), source: "thủ công" })); } catch (err) { }
         updateChkConfigView();
+        chkRenderCfgMeta();
       };
 
       el("#chk-btn-edit-config").onclick = () => {
@@ -4537,7 +4789,7 @@
         return diffDays > 5 ? diffDays : false;
       }
 
-      function chkShowToast(msg) {
+      function chkShowToast(msg, ms) {
         let toast = el("#chk-toast");
         if (!toast) {
           toast = document.createElement("div");
@@ -4548,7 +4800,7 @@
         toast.textContent = msg;
         toast.classList.add("show");
         clearTimeout(toast._hideTimer);
-        toast._hideTimer = setTimeout(() => toast.classList.remove("show"), 1500);
+        toast._hideTimer = setTimeout(() => toast.classList.remove("show"), ms || 1500);
       }
 
       chkResultsArea.addEventListener("click", e => {
@@ -4867,6 +5119,7 @@
         saveChkHistoryEntry(chkResults, chkElapsedMs);
         renderChkHistoryList();
         renderChkResults();
+        chkWarnAuthErrors();
       }
 
       async function chkRunLoop() {
@@ -4907,6 +5160,7 @@
           chkPersistRun("paused");
           chkBtnRun.disabled = false;
           renderChkResults();
+          chkWarnAuthErrors();
         }
       }
 
@@ -5190,7 +5444,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-10-21.1";
+    const APP_BUILD = "2026-10-21.2";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
