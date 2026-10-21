@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "KA Lookup Helper",
+  "version": "1.0.0",
+  "description": "Lấy Token và User-Agent từ trang tra cứu nội bộ GHN rồi đưa vào tool KA Lookup. Chỉ chạy khi anh bấm nút trên tool, không chạy ngầm.",
+  "permissions": ["webRequest", "storage"],
+  "host_permissions": [
+    "https://fe-online-gateway.ghn.vn/*",
+    "https://tracuunoibo.ghn.vn/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://ka-lookup-v2.vercel.app/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ]
+}
