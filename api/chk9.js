@@ -60,6 +60,9 @@ function computeCompensation(statusName, orderValue, codAmount, insuranceValue, 
     return calcDenquahan(orderValue, codAmount, insuranceValue, packageValue, clientId);
   }
   if (statusName === DELIVERED) {
+    if (clientId === 3892833) {
+      return calcDenquahan(orderValue, codAmount, insuranceValue, packageValue, clientId);
+    }
     return calcDenbosung(orderValue, codAmount, insuranceValue, packageValue);
   }
   return calcDenquahan(orderValue, codAmount, insuranceValue, packageValue, clientId);
