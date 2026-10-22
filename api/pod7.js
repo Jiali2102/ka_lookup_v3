@@ -48,12 +48,12 @@ function extractEpodUrls(callbackEntries) {
   return urlsWithType.map(({ type, url, time, reason }) => ({ type, url, time, reason }));
 }
 
-async function fetchCallbackLogsOnce(orderCode, userAgent, token) {
+async function fetchCallbackLogsOnce(orderCode, s1, s2) {
   const res = await fetch(`${CALLBACK_LOGS_URL}${encodeURIComponent(orderCode)}`, {
     method: "GET",
     headers: {
-      "User-Agent": userAgent,
-      Token: token,
+      "User-Agent": s1,
+      Token: s2,
       "Content-Type": "application/json"
     }
   });
@@ -76,10 +76,10 @@ async function handleRequest(req, res) {
     return;
   }
 
-  const { order_code, user_agent, token } = req.body || {};
+  const { order_code, s1, s2 } = req.body || {};
 
-  if (!order_code || !user_agent || !token) {
-    res.status(400).json({ ok: false, message: "Thiếu order_code, user_agent hoặc token." });
+  if (!order_code || !s1 || !s2) {
+    res.status(400).json({ ok: false, message: "Thiếu mã đơn hoặc cấu hình secret." });
     return;
   }
 
@@ -88,7 +88,7 @@ async function handleRequest(req, res) {
 
   for (let attempt = 1; attempt <= 4; attempt++) {
     try {
-      const response = await fetchCallbackLogsOnce(order_code, user_agent, token);
+      const response = await fetchCallbackLogsOnce(order_code, s1, s2);
 
       if (response.status === 429) {
         lastError = "Bị giới hạn tần suất (429)";
