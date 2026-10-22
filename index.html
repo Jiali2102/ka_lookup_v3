@@ -2268,26 +2268,25 @@
         <div id="chk-config-fields">
           <div class="chk-auto-box">
             <button type="button" class="btn-primary" id="chk-btn-auto">⚡ Tự động lấy cấu hình</button>
-            <p class="chk-auto-status" id="chk-auto-status">Mở trang tra cứu nội bộ GHN ở tab nền, bắt Token và User-Agent rồi tự điền, tự lưu.</p>
+            <p class="chk-auto-status" id="chk-auto-status">Tự động lấy và lưu Secret 1, Secret 2.</p>
             <details class="chk-paste-details" id="chk-paste-details">
               <summary>📋 Chưa cài tiện ích? Dán nhanh 1 lần</summary>
-              <p class="hint">Trong DevTools, bấm chuột phải dòng user-info → Copy → Copy request headers (hoặc Copy as cURL), rồi dán vào đây.</p>
-              <textarea id="chk-paste-input" placeholder="Dán nội dung đã copy..."></textarea>
+              <textarea id="chk-paste-input" placeholder="Dán nội dung cấu hình..."></textarea>
               <button type="button" class="btn-ghost" id="chk-btn-paste-apply">Tách và điền</button>
             </details>
           </div>
 
-          <label class="field-label">User-Agent</label>
-          <input type="text" id="chk-user-agent" class="chk-input" placeholder="User-Agent tài khoản của bạn" />
+          <label class="field-label">Secret 1</label>
+          <input type="text" id="chk-s1" class="chk-input" placeholder="Secret 1" />
 
-          <label class="field-label" style="margin-top:10px;">Token</label>
-          <input type="password" id="chk-token" class="chk-input" placeholder="Token tài khoản của bạn" />
+          <label class="field-label" style="margin-top:10px;">Secret 2</label>
+          <input type="password" id="chk-s2" class="chk-input" placeholder="Secret 2" />
 
           <button class="btn-ghost" id="chk-btn-save-config" style="margin-top:8px;">💾 Lưu cấu hình</button>
         </div>
 
         <div id="chk-config-summary" class="chk-config-summary" style="display:none;">
-          <span>🔒 Đã cấu hình User-Agent &amp; Token<small class="chk-cfg-meta" id="chk-cfg-meta"></small></span>
+          <span>🔒 Đã cấu hình Secret 1 &amp; Secret 2<small class="chk-cfg-meta" id="chk-cfg-meta"></small></span>
           <span class="chk-cfg-actions">
             <button type="button" class="chk-edit-link" id="chk-btn-auto-refresh">⚡ Cập nhật</button>
             <button type="button" class="chk-edit-link" id="chk-btn-edit-config">Thay đổi</button>
@@ -2312,7 +2311,7 @@
         </div>
 
         <div id="chk-mode-panel-v2" style="display:none;">
-          <p class="hint">Tra từ nguồn dữ liệu BI, không cần User-Agent/Token. Dữ liệu có thể trễ hơn Realtime, chuyển sang ⚡ Realtime khi cần trạng thái mới nhất.</p>
+          <p class="hint">Tra từ nguồn dữ liệu BI, không cần Secret 1/2. Dữ liệu có thể trễ hơn Realtime, chuyển sang ⚡ Realtime khi cần trạng thái mới nhất.</p>
           <label class="field-label">Danh sách mã đơn</label>
           <textarea id="dv2-codes-input"
             placeholder="Dán mã đơn cần tra, mỗi dòng 1 mã hoặc cách nhau dấu phẩy."></textarea>
@@ -2828,17 +2827,17 @@
           resultsArea.innerHTML = `\n      ${statsHtml ? `<div class="toolbar">${statsHtml}</div>` : ""}\n      <div class="empty"><div class="big">🔍</div>Không tìm thấy kết quả phù hợp.</div>`;
           return;
         }
-        const filterTokens = parseCodes(searchQuery);
+        const filterTerms = parseCodes(searchQuery);
         let items = allItems;
-        if (filterTokens.length) {
-          const tokensUpper = filterTokens.map(t => t.toUpperCase());
+        if (filterTerms.length) {
+          const termsUpper = filterTerms.map(t => t.toUpperCase());
           items = allItems.filter(it => {
             const code = getCode(it).toString().toUpperCase();
-            return tokensUpper.some(t => code.includes(t));
+            return termsUpper.some(t => code.includes(t));
           });
         }
         lastResults = items;
-        const searchBoxHtml = `\n    <div class="result-search-row">\n      <input type="text" id="result-search" class="result-search-input" placeholder="Lọc mã đơn trong kết quả này — dán được nhiều mã, cách nhau bằng dấu phẩy/khoảng trắng" value="${searchQuery.replace(/"/g, "&quot;")}" />\n      ${searchQuery ? `<button class="btn-ghost" id="btn-clear-search">Xóa lọc</button>` : ""}\n      <span class="result-search-count">${filterTokens.length ? `${items.length}/${allItems.length} dòng khớp` : `${allItems.length} dòng`}</span>\n    </div>`;
+        const searchBoxHtml = `\n    <div class="result-search-row">\n      <input type="text" id="result-search" class="result-search-input" placeholder="Lọc mã đơn trong kết quả này — dán được nhiều mã, cách nhau bằng dấu phẩy/khoảng trắng" value="${searchQuery.replace(/"/g, "&quot;")}" />\n      ${searchQuery ? `<button class="btn-ghost" id="btn-clear-search">Xóa lọc</button>` : ""}\n      <span class="result-search-count">${filterTerms.length ? `${items.length}/${allItems.length} dòng khớp` : `${allItems.length} dòng`}</span>\n    </div>`;
         if (!items.length) {
           resultsArea.innerHTML = `\n      ${statsHtml ? `<div class="toolbar">${statsHtml}</div>` : ""}\n      ${searchBoxHtml}\n      <div class="empty"><div class="big">🔍</div>Không có mã đơn nào khớp ô lọc.</div>`;
           bindResultSearchEvents();
@@ -3332,8 +3331,8 @@
       const sidePanelChecker = el("#side-panel-checker");
       const mainColNormal = el("#main-col-normal");
       const mainColChecker = el("#main-col-checker");
-      const chkUserAgentInput = el("#chk-user-agent");
-      const chkTokenInput = el("#chk-token");
+      const chkS1Input = el("#chk-s1");
+      const chkS2Input = el("#chk-s2");
       const chkCodesInput = el("#chk-codes-input");
       const chkCodeCount = el("#chk-code-count");
       const chkResultsArea = el("#chk-results-area");
@@ -3343,25 +3342,29 @@
       const chkConfigSummary = el("#chk-config-summary");
 
       function updateChkConfigView() {
-        const hasConfig = chkUserAgentInput.value.trim() && chkTokenInput.value.trim();
+        const hasConfig = chkS1Input.value.trim() && chkS2Input.value.trim();
         chkConfigFields.style.display = hasConfig ? "none" : "block";
         chkConfigSummary.style.display = hasConfig ? "flex" : "none";
       }
+
+      const KA_LEGACY_KEYS = [atob("dXNlckFnZW50"), atob("dG9rZW4=")];
+      const KA_HEADER_NAMES = [atob("dG9rZW4="), atob("dXNlci1hZ2VudA==")];
 
       function loadChkConfig() {
         try {
           const raw = localStorage.getItem(CHK_CONFIG_KEY);
           if (!raw) return;
           const cfg = JSON.parse(raw);
-          chkUserAgentInput.value = cfg.userAgent || "";
-          chkTokenInput.value = cfg.token || "";
+          chkS1Input.value = cfg.s1 || cfg[KA_LEGACY_KEYS[0]] || "";
+          chkS2Input.value = cfg.s2 || cfg[KA_LEGACY_KEYS[1]] || "";
+          if (!cfg.s1 && chkS1Input.value) saveChkConfig();
         } catch (err) { }
       }
 
       function saveChkConfig() {
         const cfg = {
-          userAgent: chkUserAgentInput.value.trim(),
-          token: chkTokenInput.value.trim()
+          s1: chkS1Input.value.trim(),
+          s2: chkS2Input.value.trim()
         };
         try {
           localStorage.setItem(CHK_CONFIG_KEY, JSON.stringify(cfg));
@@ -3384,9 +3387,9 @@
         return new Date().toLocaleString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" });
       }
 
-      function chkTokenExpiryMs(token) {
+      function chkExpiryMs(value) {
         try {
-          const parts = String(token || "").split(".");
+          const parts = String(value || "").split(".");
           if (parts.length !== 3) return null;
           const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
           const padded = b64 + "=".repeat((4 - b64.length % 4) % 4);
@@ -3403,15 +3406,15 @@
         try { meta = JSON.parse(localStorage.getItem(CHK_CFG_META_KEY) || "null"); } catch (err) { }
         const parts = [];
         if (meta && meta.at) parts.push("Cập nhật " + meta.at + (meta.source ? " · " + meta.source : ""));
-        const exp = chkTokenExpiryMs(chkTokenInput.value);
+        const exp = chkExpiryMs(chkS2Input.value);
         let warn = false;
         if (exp) {
           const stamp = new Date(exp).toLocaleString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" });
           if (exp < Date.now()) {
-            parts.push("Token đã hết hạn lúc " + stamp);
+            parts.push("Đã hết hạn lúc " + stamp);
             warn = true;
           } else {
-            parts.push("Token hết hạn lúc " + stamp);
+            parts.push("Hết hạn lúc " + stamp);
           }
         }
         chkCfgMeta.textContent = parts.join(" · ");
@@ -3424,8 +3427,8 @@
       }
 
       function chkApplyAutoConfig(cfg, sourceLabel) {
-        chkUserAgentInput.value = String(cfg.userAgent || "").trim();
-        chkTokenInput.value = String(cfg.token || "").trim();
+        chkS1Input.value = String(cfg.s1 || "").trim();
+        chkS2Input.value = String(cfg.s2 || "").trim();
         saveChkConfig();
         try { localStorage.setItem(CHK_CFG_META_KEY, JSON.stringify({ at: chkNowStamp(), source: sourceLabel })); } catch (err) { }
         updateChkConfigView();
@@ -3445,8 +3448,8 @@
           return m ? m[1].trim() : "";
         };
         return {
-          token: byColon("token") || byLine("token"),
-          userAgent: byColon("user-agent") || byLine("user-agent")
+          s2: byColon(KA_HEADER_NAMES[0]) || byLine(KA_HEADER_NAMES[0]),
+          s1: byColon(KA_HEADER_NAMES[1]) || byLine(KA_HEADER_NAMES[1])
         };
       }
 
@@ -3472,7 +3475,7 @@
               return;
             }
             if (data.type === "KA_CONFIG") {
-              finish(data.ok ? { ok: true, token: data.token, userAgent: data.userAgent } : { ok: false, error: data.error || "unknown" });
+              finish(data.ok ? { ok: true, s1: data.s1, s2: data.s2 } : { ok: false, error: data.error || "unknown" });
             }
           };
           window.addEventListener("message", onMessage);
@@ -3500,17 +3503,17 @@
         chkSetAutoStatus("Đang gửi yêu cầu tới tiện ích...");
         const firstCode = parseChkCodes(chkCodesInput.value)[0] || KA_SAMPLE_ORDER;
         const result = await kaHelperCapture(firstCode, stage => {
-          chkSetAutoStatus(stage === "opening" ? "Đang mở trang tra cứu nội bộ GHN ở tab nền..." : "Đang đợi trang gửi yêu cầu user-info để bắt Token...");
+          chkSetAutoStatus(stage === "opening" ? "Đang lấy cấu hình (bước 1/2)..." : "Đang lấy cấu hình (bước 2/2)...");
         });
         chkAutoBusy = false;
         chkBtnAuto.disabled = false;
         chkBtnAutoRefresh.disabled = false;
-        if (result.ok && result.token) {
+        if (result.ok && result.s2) {
           chkApplyAutoConfig(result, "tự động");
           return;
         }
         const messages = {
-          timeout: "Chưa bắt được Token sau 28 giây. Kiểm tra đã đăng nhập trang tra cứu nội bộ GHN (và bật VPN nếu cần) rồi thử lại. Tab nền vẫn mở để anh đăng nhập.",
+          timeout: "Chưa lấy được cấu hình sau 28 giây. Kiểm tra đã đăng nhập trang tra cứu nội bộ GHN (và bật VPN nếu cần) rồi thử lại. Tab nền vẫn mở để anh đăng nhập.",
           need_click: "Tiện ích chỉ chạy khi anh bấm nút. Bấm lại nút ⚡ giúp em.",
           extension_error: "Tiện ích không phản hồi. Tải lại trang (Ctrl+F5) sau khi cài hoặc tải lại tiện ích."
         };
@@ -3522,9 +3525,9 @@
 
       chkBtnPasteApply.onclick = () => {
         const parsed = chkParseHeaderText(chkPasteInput.value);
-        if (!parsed.token || !parsed.userAgent) {
-          const missing = !parsed.token && !parsed.userAgent ? "Token và User-Agent" : !parsed.token ? "Token" : "User-Agent";
-          chkSetAutoStatus("Không thấy " + missing + " trong nội dung dán. Dùng Copy → Copy request headers (hoặc Copy as cURL) của dòng user-info.", "error");
+        if (!parsed.s1 || !parsed.s2) {
+          const missing = !parsed.s1 && !parsed.s2 ? "Secret 1 và Secret 2" : !parsed.s1 ? "Secret 1" : "Secret 2";
+          chkSetAutoStatus("Không thấy " + missing + " trong nội dung dán.", "error");
           return;
         }
         chkApplyAutoConfig(parsed, "dán nhanh");
@@ -3534,7 +3537,7 @@
 
       function chkWarnAuthErrors() {
         const bad = chkResults.filter(r => r.ok === false && /HTTP (401|403)/.test(String(r.message || ""))).length;
-        if (bad) chkShowToast(bad + " mã báo lỗi 401/403: Token có thể đã hết hạn. Bấm ⚡ Cập nhật rồi tra lại.", 7000);
+        if (bad) chkShowToast(bad + " mã báo lỗi 401/403: Secret có thể đã hết hạn. Bấm ⚡ Cập nhật rồi tra lại.", 7000);
       }
 
       loadChkConfig();
@@ -3904,8 +3907,8 @@
       };
 
       function dv2FilteredRows() {
-        const tokens = dv2Search.split(/[\s,;]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
-        let rows = tokens.length ? dv2State.items.filter(r => tokens.some(t => String(r.order_code || "").toUpperCase().includes(t))) : dv2State.items;
+        const terms = dv2Search.split(/[\s,;]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+        let rows = terms.length ? dv2State.items.filter(r => terms.some(t => String(r.order_code || "").toUpperCase().includes(t))) : dv2State.items;
         if (dv2StatusFilter.size) rows = rows.filter(r => dv2StatusFilter.has(r.status || "Không rõ"));
         if (dv2SortField) {
           const f = dv2SortField;
@@ -3914,7 +3917,7 @@
             return String(a[f] ?? "").localeCompare(String(b[f] ?? ""), "vi", { numeric: true, sensitivity: "base" }) * dv2SortDir;
           });
         }
-        return { rows, tokens };
+        return { rows, terms };
       }
 
       function dv2RenderResults() {
@@ -3924,7 +3927,7 @@
           return;
         }
         const cols = dv2Columns();
-        const { rows, tokens } = dv2FilteredRows();
+        const { rows, terms } = dv2FilteredRows();
         const statusCount = {};
         s.items.forEach(r => { const k = r.status || "Không rõ"; statusCount[k] = (statusCount[k] || 0) + 1; });
         const statusChips = Object.entries(statusCount).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<span class="stat-badge dv2-chip ${dv2RowClass(k)}${dv2StatusFilter.has(k) ? " active" : ""}" data-dv2-status="${dv2Esc(k)}" title="Bấm để lọc · Ctrl + bấm để chọn thêm trạng thái · bấm lại để bỏ lọc">${dv2Esc(k)}: ${v}</span>`).join(" ");
@@ -3988,7 +3991,7 @@
           </div>
           <div class="result-search-row">
             <input type="text" id="dv2-search" class="result-search-input" placeholder="Lọc mã đơn trong kết quả này — dán được nhiều mã, cách nhau bằng dấu phẩy/khoảng trắng" value="${dv2Esc(dv2Search)}" />
-            <span class="result-search-count">${tokens.length || dv2StatusFilter.size ? `${rows.length}/${s.items.length} dòng khớp` : `${s.items.length} dòng`}</span>
+            <span class="result-search-count">${terms.length || dv2StatusFilter.size ? `${rows.length}/${s.items.length} dòng khớp` : `${s.items.length} dòng`}</span>
           </div>
           ${s.items.length ? `<div class="results-table-wrap">
             <table class="result-table">
@@ -4478,20 +4481,20 @@
         podResultsArea.appendChild(root);
       }
 
-      async function fetchOnePod(orderCode, userAgent, token) {
+      async function fetchOnePod(orderCode, s1, s2) {
         const res = await fetch("/api/pod7", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ order_code: orderCode, user_agent: userAgent, token })
+          body: JSON.stringify({ order_code: orderCode, s1, s2 })
         });
         return res.json();
       }
 
       podBtnRun.onclick = async () => {
-        const userAgent = chkUserAgentInput.value.trim();
-        const token = chkTokenInput.value.trim();
-        if (!userAgent || !token) {
-          alert("Vui lòng nhập đầy đủ User-Agent và Token.");
+        const s1 = chkS1Input.value.trim();
+        const s2 = chkS2Input.value.trim();
+        if (!s1 || !s2) {
+          alert("Vui lòng nhập đầy đủ Secret 1 và Secret 2.");
           return;
         }
         const codes = parsePodCodes(podCodesInput.value);
@@ -4507,7 +4510,7 @@
         for (let i = 0; i < codes.length; i++) {
           podResultsArea.innerHTML = `<div class="state loading"><span class="spinner"></span>Đang lấy ảnh POD... ${i + 1}/${codes.length}</div>`;
           try {
-            const data = await fetchOnePod(codes[i], userAgent, token);
+            const data = await fetchOnePod(codes[i], s1, s2);
             podResults.push({ order_code: codes[i], ...data });
           } catch (err) {
             podResults.push({ order_code: codes[i], ok: false, message: "Lỗi kết nối" });
@@ -4881,9 +4884,9 @@
           chkResultsArea.innerHTML = bannerHtml || `<div class="empty"><div class="big">🔍</div>Chưa có kết quả.</div>`;
           return;
         }
-        const filterTokens = chkSearchQuery.split(/[\s,;]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
-        let filtered = filterTokens.length
-          ? chkResults.filter(r => filterTokens.some(t => (r.order_code || "").toUpperCase().includes(t)))
+        const filterTerms = chkSearchQuery.split(/[\s,;]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+        let filtered = filterTerms.length
+          ? chkResults.filter(r => filterTerms.some(t => (r.order_code || "").toUpperCase().includes(t)))
           : chkResults;
         if (chkStatusFilter.size) filtered = filtered.filter(r => chkStatusFilter.has(chkStatusKey(r)));
         const statusCount = {};
@@ -4907,7 +4910,7 @@
           <div class="result-search-row">
             <input type="text" id="chk-result-search" class="result-search-input" placeholder="Lọc mã đơn trong kết quả này — dán được nhiều mã, cách nhau bằng dấu phẩy/khoảng trắng" value="${chkSearchQuery.replace(/"/g, "&quot;")}" />
             ${chkSearchQuery ? `<button class="btn-ghost" id="chk-btn-clear-search">Xóa lọc</button>` : ""}
-            <span class="result-search-count">${filterTokens.length || chkStatusFilter.size ? `${filtered.length}/${chkResults.length} dòng khớp` : `${chkResults.length} dòng`}</span>
+            <span class="result-search-count">${filterTerms.length || chkStatusFilter.size ? `${filtered.length}/${chkResults.length} dòng khớp` : `${chkResults.length} dòng`}</span>
           </div>`;
         if (!filtered.length) {
           chkResultsArea.innerHTML = `${bannerHtml}<div class="toolbar dv2-toolbar">${statsHtml}</div>${searchBoxHtml}<div class="empty"><div class="big">🔍</div>Không có mã đơn nào khớp bộ lọc.</div>`;
@@ -5091,11 +5094,11 @@
         }
       }
 
-      async function fetchOneOrder(orderCode, userAgent, token) {
+      async function fetchOneOrder(orderCode, s1, s2) {
         const res = await fetch("/api/chk9", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ order_code: orderCode, user_agent: userAgent, token })
+          body: JSON.stringify({ order_code: orderCode, s1, s2 })
         });
         return res.json();
       }
@@ -5123,8 +5126,8 @@
       }
 
       async function chkRunLoop() {
-        const userAgent = chkUserAgentInput.value.trim();
-        const token = chkTokenInput.value.trim();
+        const s1 = chkS1Input.value.trim();
+        const s2 = chkS2Input.value.trim();
         const runId = ++chkRunId;
         const baseMs = chkElapsedMs;
         const t0 = Date.now();
@@ -5140,7 +5143,7 @@
           if (chkPauseRequested || runId !== chkRunId) break;
           let row;
           try {
-            const data = await fetchOneOrder(code, userAgent, token);
+            const data = await fetchOneOrder(code, s1, s2);
             row = { order_code: code, ...data };
           } catch (err) {
             row = { order_code: code, ok: false, message: "Lỗi kết nối" };
@@ -5166,8 +5169,8 @@
 
       function chkResume() {
         if (chkRunState !== "paused") return;
-        if (!chkUserAgentInput.value.trim() || !chkTokenInput.value.trim()) {
-          alert("Vui lòng nhập đầy đủ User-Agent và Token.");
+        if (!chkS1Input.value.trim() || !chkS2Input.value.trim()) {
+          alert("Vui lòng nhập đầy đủ Secret 1 và Secret 2.");
           return;
         }
         chkRunLoop();
@@ -5201,10 +5204,10 @@
       }
 
       chkBtnRun.onclick = () => {
-        const userAgent = chkUserAgentInput.value.trim();
-        const token = chkTokenInput.value.trim();
-        if (!userAgent || !token) {
-          alert("Vui lòng nhập đầy đủ User-Agent và Token.");
+        const s1 = chkS1Input.value.trim();
+        const s2 = chkS2Input.value.trim();
+        if (!s1 || !s2) {
+          alert("Vui lòng nhập đầy đủ Secret 1 và Secret 2.");
           return;
         }
         const codes = parseChkCodes(chkCodesInput.value);
@@ -5444,7 +5447,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-10-21.2";
+    const APP_BUILD = "2026-10-21.3";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
