@@ -98,12 +98,12 @@ function statusVietnamese(status, fallback) {
   return statuses[status] || fallback || status;
 }
 
-async function fetchOnce(orderCode, userAgent, token) {
+async function fetchOnce(orderCode, s1, s2) {
   const res = await fetch(TRACKING_URL, {
     method: "POST",
     headers: {
-      "User-Agent": userAgent,
-      Token: token,
+      "User-Agent": s1,
+      Token: s2,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ order_code: orderCode, source: "inside_system" })
@@ -111,12 +111,12 @@ async function fetchOnce(orderCode, userAgent, token) {
   return res;
 }
 
-async function fetchOrderLogsOnce(orderCode, userAgent, token) {
+async function fetchOrderLogsOnce(orderCode, s1, s2) {
   const res = await fetch(`${HISTORY_URL}${encodeURIComponent(orderCode)}`, {
     method: "GET",
     headers: {
-      "User-Agent": userAgent,
-      Token: token,
+      "User-Agent": s1,
+      Token: s2,
       "Content-Type": "application/json"
     }
   });
@@ -135,9 +135,9 @@ function extractMaxCodAmount(historyJson) {
   return maxCod;
 }
 
-async function fetchMaxCodAmount(orderCode, userAgent, token) {
+async function fetchMaxCodAmount(orderCode, s1, s2) {
   try {
-    const res = await fetchOrderLogsOnce(orderCode, userAgent, token);
+    const res = await fetchOrderLogsOnce(orderCode, s1, s2);
     if (!res.ok) return null;
     const json = await res.json();
     return extractMaxCodAmount(json);
@@ -162,10 +162,10 @@ async function handleRequest(req, res) {
     return;
   }
 
-  const { order_code, user_agent, token } = req.body || {};
+  const { order_code, s1, s2 } = req.body || {};
 
-  if (!order_code || !user_agent || !token) {
-    res.status(400).json({ ok: false, message: "Thiếu order_code, user_agent hoặc token." });
+  if (!order_code || !s1 || !s2) {
+    res.status(400).json({ ok: false, message: "Thiếu mã đơn hoặc cấu hình secret." });
     return;
   }
 
@@ -174,7 +174,7 @@ async function handleRequest(req, res) {
 
   for (let attempt = 1; attempt <= 4; attempt++) {
     try {
-      const response = await fetchOnce(order_code, user_agent, token);
+      const response = await fetchOnce(order_code, s1, s2);
 
       if (response.status === 429) {
         lastError = "Bị giới hạn tần suất (429)";
@@ -228,7 +228,7 @@ async function handleRequest(req, res) {
 
       const orderValue = Number(customField.OrderValue || 0);
       const trackingCodAmount = Number(orderInfo.cod_amount || 0);
-      const historyMaxCod = await fetchMaxCodAmount(order_code, user_agent, token);
+      const historyMaxCod = await fetchMaxCodAmount(order_code, s1, s2);
       const codAmount = Math.max(trackingCodAmount, historyMaxCod || 0);
       const insuranceValue = Number(orderInfo.insurance_value || 0);
       const packageValue = Number(customField.PackageValue || 0);
