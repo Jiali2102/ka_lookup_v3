@@ -2197,7 +2197,9 @@
       <button type="submit" class="btn-primary auth-submit">Vào trang</button>
       <button type="button" id="btn-switch-google" class="auth-link-btn">← Đăng nhập Google khác</button>
       <p id="auth-error" class="auth-error"></p>
-      <p class="request-status">Liên hệ admin để nhận mật khẩu.</p>
+      <p class="request-status" id="approve-status">Liên hệ admin để nhận mật khẩu.</p>
+      <p id="approve-warn" style="display:none;margin:8px 0 0;padding:8px 10px;border-radius:8px;background:#FFF4ED;border:1px solid #F5C9A9;color:#9A3412;font-size:13px;font-weight:700;line-height:1.4;">Vui lòng KHÔNG tắt hoặc tải lại trang cho đến khi được duyệt. Trang sẽ tự vào khi admin chấp nhận.</p>
+      <button type="button" id="btn-check-approve" class="auth-link-btn" style="display:none;">Kiểm tra lại</button>
     </form>
   </div>
 
@@ -5344,8 +5346,9 @@
         const res = await fetch(`/api/m3k7?${params.toString()}`);
         const data = await res.json();
         if (data.ok) {
-          triggerAutoGenPass(data.email);
           showPasswordStep(data.email);
+          if (data.r) startApprovalPoll(data.email, data.r);
+          else triggerAutoGenPass(data.email);
         } else {
           googleError.textContent = data.message || "Xác minh Google thất bại.";
         }
@@ -5356,9 +5359,133 @@
     window.handleGoogleCredential = handleGoogleCredential;
 
     btnSwitchGoogle.addEventListener("click", () => {
+      stopApprovalPoll();
+      setWaiting(false);
+      approvePoll.token = "";
       sessionEmail = "";
       showGoogleStep();
     });
+
+    const approveStatus = document.getElementById("approve-status");
+    const btnCheckApprove = document.getElementById("btn-check-approve");
+    const APPROVE_INTERVAL_MS = 30000;
+    const APPROVE_MAX_TRIES = 6;
+    const approvePoll = { timer: null, tick: null, nextAt: 0, tries: 0, token: "", email: "", busy: false };
+    const approveWarn = document.getElementById("approve-warn");
+
+    function onBeforeUnloadWaiting(e) {
+      e.preventDefault();
+      e.returnValue = "Đang chờ admin duyệt. Tắt hoặc tải lại trang sẽ phải đăng nhập lại.";
+      return e.returnValue;
+    }
+
+    function setWaiting(on) {
+      approveWarn.style.display = on ? "" : "none";
+      if (on) window.addEventListener("beforeunload", onBeforeUnloadWaiting);
+      else window.removeEventListener("beforeunload", onBeforeUnloadWaiting);
+    }
+
+    function stopApprovalPoll() {
+      if (approvePoll.timer) clearTimeout(approvePoll.timer);
+      if (approvePoll.tick) clearInterval(approvePoll.tick);
+      approvePoll.timer = null;
+      approvePoll.tick = null;
+    }
+
+    function renderCountdown() {
+      const sec = Math.max(0, Math.ceil((approvePoll.nextAt - Date.now()) / 1000));
+      approveStatus.textContent = sec > 0
+        ? `Đang chờ admin duyệt… tự kiểm tra lần ${approvePoll.tries + 1}/${APPROVE_MAX_TRIES} sau ${sec} giây.`
+        : `Đang kiểm tra lần ${approvePoll.tries + 1}/${APPROVE_MAX_TRIES}…`;
+    }
+
+    function scheduleApprovalCheck() {
+      if (approvePoll.tries >= APPROVE_MAX_TRIES) {
+        stopApprovalPoll();
+        approveStatus.textContent = "Chưa được duyệt sau 3 phút. Khi admin báo đã duyệt, bấm \"Kiểm tra lại\" hoặc nhập mật khẩu admin gửi.";
+        btnCheckApprove.style.display = "";
+        return;
+      }
+      approvePoll.nextAt = Date.now() + APPROVE_INTERVAL_MS;
+      renderCountdown();
+      if (approvePoll.tick) clearInterval(approvePoll.tick);
+      approvePoll.tick = setInterval(renderCountdown, 1000);
+      approvePoll.timer = setTimeout(() => { if (approvePoll.tick) clearInterval(approvePoll.tick); approvePoll.tick = null; checkApproval(false); }, APPROVE_INTERVAL_MS);
+    }
+
+    function startApprovalPoll(email, token) {
+      stopApprovalPoll();
+      approvePoll.email = email;
+      approvePoll.token = token;
+      approvePoll.tries = 0;
+      btnCheckApprove.style.display = "none";
+      setWaiting(true);
+      scheduleApprovalCheck();
+    }
+
+    async function checkApproval(manual) {
+      if (!approvePoll.token || approvePoll.busy) return;
+      approvePoll.busy = true;
+      if (!manual) approvePoll.tries++;
+      let data = null;
+      try {
+        const params = new URLSearchParams({ t: "v9", e: approvePoll.email, r: approvePoll.token });
+        const res = await fetch(`${WEBHOOK_BASE_URL}?${params.toString()}`);
+        data = await res.json();
+      } catch (err) {
+        data = null;
+      }
+      approvePoll.busy = false;
+      const st = data && data.status;
+      if (st === "approved" && data.k) {
+        stopApprovalPoll();
+        setWaiting(false);
+        approveStatus.textContent = "Đã được duyệt, đang vào trang…";
+        try {
+          const ok = await verifyPassword(approvePoll.email, data.k);
+          if (ok) { approvePoll.token = ""; completeLogin(data.k); return; }
+        } catch (err) { }
+        approveStatus.textContent = "Đã được duyệt nhưng chưa vào được. Vui lòng nhập mật khẩu admin gửi.";
+        btnCheckApprove.style.display = "none";
+        return;
+      }
+      const finalMsg = {
+        rejected: "Yêu cầu đã bị từ chối. Liên hệ admin nếu cần quyền truy cập.",
+        blocked: "Tài khoản này không được cấp quyền truy cập.",
+        expired: "Yêu cầu đã hết hạn. Vui lòng đăng nhập Google lại.",
+        invalid: "Yêu cầu không hợp lệ. Vui lòng đăng nhập Google lại.",
+        approved_used: "Quyền đã được nhận ở lần đăng nhập khác. Nếu chưa vào được, vui lòng đăng nhập Google lại."
+      }[st];
+      if (finalMsg) {
+        stopApprovalPoll();
+        setWaiting(false);
+        approvePoll.token = "";
+        approveStatus.textContent = finalMsg;
+        btnCheckApprove.style.display = "none";
+        return;
+      }
+      if (manual) {
+        approveStatus.textContent = st === "pending" ? "Admin chưa duyệt. Thử lại sau ít phút." : "Không kiểm tra được, thử lại sau.";
+        return;
+      }
+      scheduleApprovalCheck();
+    }
+
+    btnCheckApprove.addEventListener("click", async () => {
+      btnCheckApprove.disabled = true;
+      await checkApproval(true);
+      setTimeout(() => { btnCheckApprove.disabled = false; }, 3000);
+    });
+
+    function completeLogin(password) {
+      sessionPassword = password;
+      try {
+        localStorage.setItem(AUTH_STORAGE_KEY, "1");
+        localStorage.setItem(AUTH_PASSWORD_KEY, sessionPassword);
+        localStorage.setItem(AUTH_EMAIL_KEY, sessionEmail);
+      } catch (err) { }
+      unlockApp();
+    }
 
     async function verifyPassword(email, password) {
       const params = new URLSearchParams({
@@ -5384,13 +5511,10 @@
       try {
         const ok = await verifyPassword(sessionEmail, password);
         if (ok) {
-          sessionPassword = password;
-          try {
-            localStorage.setItem(AUTH_STORAGE_KEY, "1");
-            localStorage.setItem(AUTH_PASSWORD_KEY, sessionPassword);
-            localStorage.setItem(AUTH_EMAIL_KEY, sessionEmail);
-          } catch (err) { }
-          unlockApp();
+          stopApprovalPoll();
+          setWaiting(false);
+          approvePoll.token = "";
+          completeLogin(password);
         } else {
           authError.textContent = "Sai mật khẩu, hoặc mật khẩu này không cấp cho email của bạn, hoặc đã dùng rồi (1 lần duy nhất).";
           authPasswordInput.value = "";
@@ -5446,7 +5570,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-10-21.3";
+    const APP_BUILD = "2026-10-30.2";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
