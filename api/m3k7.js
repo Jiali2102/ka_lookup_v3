@@ -36,7 +36,24 @@ module.exports = async (req, res) => {
       return;
     }
 
-    res.status(200).json({ ok: true, email });
+    let reqToken = null;
+    const target = process.env.N8N_WEBHOOK_URL;
+    if (target) {
+      try {
+        const key = String(process.env.N8N_LOOKUP_V2_KEY || "").trim().replace(/^["']|["']$/g, "");
+        const params = new URLSearchParams({ t: "v7", e: email });
+        const up = await fetch(`${target}?${params.toString()}`, { method: "GET", headers: key ? { "x-kl-key": key } : {} });
+        const j = await up.json().catch(() => null);
+        if (j && j.ok === false) {
+          res.status(200).json({ ok: false, message: j.message || "Tài khoản này không được cấp quyền truy cập." });
+          return;
+        }
+        reqToken = j && j.r ? String(j.r) : null;
+      } catch (err) {
+      }
+    }
+
+    res.status(200).json({ ok: true, email, r: reqToken });
   } catch (err) {
     res.status(502).json({ ok: false, message: "Không xác minh được, thử lại." });
   }
