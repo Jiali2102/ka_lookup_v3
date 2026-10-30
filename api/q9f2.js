@@ -40,6 +40,12 @@ module.exports = async (req, res) => {
   }
 
   const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+  try {
+    if (new URLSearchParams(qs.slice(1)).get("t") === "v7") {
+      res.status(200).json({ ok: false, message: "Yêu cầu không hợp lệ." });
+      return;
+    }
+  } catch (err) { }
 
   try {
     const key = String(process.env.N8N_LOOKUP_V2_KEY || "").trim().replace(/^["']|["']$/g, "");
