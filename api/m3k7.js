@@ -53,7 +53,7 @@ module.exports = async (req, res) => {
       }
     }
 
-    res.status(200).json({ ok: true, email, r: reqToken });
+    res.status(200).json({ ok: true, email, name: String(data.name || "").slice(0, 80), r: reqToken });
   } catch (err) {
     res.status(502).json({ ok: false, message: "Không xác minh được, thử lại." });
   }
