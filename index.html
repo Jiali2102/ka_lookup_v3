@@ -1794,6 +1794,25 @@
       background: #FFF8E1;
     }
 
+    .stage { display: flex; flex-direction: column; gap: 4px; min-width: 176px; }
+    .stage-label { align-self: flex-start; padding: 2px 9px; border-radius: 11px; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+    .stage-bar { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; }
+    .stage-seg { height: 5px; border-radius: 3px; background: #E5E2DC; }
+    .stage-names { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); font-size: 10.5px; color: #6B7280; }
+    .stage-names span:nth-child(2), .stage-names span:nth-child(3) { text-align: center; }
+    .stage-names span:last-child { text-align: right; }
+    .stage-names b { color: #1F2937; }
+    .stage.st-fwd .stage-label { background: #E8EEF6; color: #0E4174; }
+    .stage.st-ret .stage-label { background: #FEF9C3; color: #854D0E; }
+    .stage.st-fail .stage-label { background: #FFEDD5; color: #9A3412; }
+    .stage.st-delivered .stage-label { background: #DCFCE7; color: #166534; }
+    .stage.st-returned .stage-label { background: #FEF08A; color: #713F12; }
+    .stage.st-cancel .stage-label { background: #111827; color: #FFFFFF; }
+    .stage.st-lost .stage-label { background: #FEE2E2; color: #991B1B; }
+    .stage.st-scrap .stage-label { background: #FEE2E2; color: #991B1B; animation: chkScrapBlink 2s ease-in-out infinite; }
+    .stage.st-scrap .stage-bar { animation: stageScrapPulse 1.6s ease-in-out infinite; }
+    @keyframes stageScrapPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
     .chk-scrap-blink {
       display: inline-block;
       animation: chkScrapBlink 2s ease-in-out infinite;
@@ -4053,6 +4072,7 @@
         s.items.forEach(r => { const k = r.status || "Không rõ"; statusCount[k] = (statusCount[k] || 0) + 1; });
         const statusChips = Object.entries(statusCount).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<span class="stat-badge dv2-chip ${dv2RowClass(k)}${dv2StatusFilter.has(k) ? " active" : ""}" data-dv2-status="${dv2Esc(k)}" title="Bấm để lọc · Ctrl + bấm để chọn thêm trạng thái · bấm lại để bỏ lọc">${dv2Esc(k)}: ${v}</span>`).join(" ");
         const body = rows.map(r => `<tr class="${dv2RowClass(r.status)}">${cols.map(f => {
+          if (f === "status" && r.status) return `<td>${stageHtml(r.status_code || r.status, r.status)}</td>`;
           if (f === "order_code") {
             const url = `https://tracuunoibo.ghn.vn/internal?order_code=${encodeURIComponent(r.order_code || "")}`;
             return `<td class="code-cell"><a href="${url}" target="_blank" rel="noopener" class="ticket-link">${dv2Esc(r.order_code)}</a></td>`;
@@ -4849,6 +4869,35 @@
         }
       }
 
+
+      const STAGE_VN = { cancel: "Hủy đơn hàng", lost: "Hàng bị thất lạc", damage: "Hàng bị hư hỏng", delivered: "Giao hàng thành công", returned: "Hoàn hàng thành công", ready_to_pick: "Chờ lấy hàng", picking: "Đang lấy hàng", money_collect_picking: "Đang lấy hàng", picked: "Lấy hàng thành công", storing: "Lưu kho", transporting: "Đang trung chuyển hàng", sorting: "Đang phân loại", delivering: "Đang giao hàng", money_collect_delivering: "Đang giao hàng", delivery_fail: "Giao hàng không thành công", waiting_to_return: "Chờ chuyển hoàn", return: "Chuyển hoàn", return_transporting: "Đang trung chuyển hàng hoàn", return_sorting: "Đang phân loại hàng hoàn", returning: "Đang hoàn hàng", return_fail: "Hoàn hàng không thành công", scrap: "Hàng vô thừa nhận" };
+      const STAGE_FROM_VN = Object.fromEntries(Object.entries(STAGE_VN).reverse().map(([k, v]) => [v.toLowerCase(), k]));
+      const STAGE_RULES = {
+        ready_to_pick: ["fwd", 1], picking: ["fwd", 1], money_collect_picking: ["fwd", 1],
+        picked: ["fwd", 2], storing: ["fwd", 2], transporting: ["fwd", 2], sorting: ["fwd", 2],
+        delivering: ["fwd", 3], money_collect_delivering: ["fwd", 3], delivery_fail: ["fwd", 3, "fail"],
+        delivered: ["fwd", 4, "delivered"], cancel: ["fwd", 4, "cancel"], lost: ["fwd", 4, "lost"], damage: ["fwd", 4, "lost"], scrap: ["fwd", 4, "scrap"],
+        waiting_to_return: ["ret", 1], return: ["ret", 1], return_transporting: ["ret", 2], return_sorting: ["ret", 2],
+        returning: ["ret", 3], return_fail: ["ret", 3, "fail"], returned: ["ret", 4, "returned"]
+      };
+      const STAGE_COLORS = { fwd: "#0E4174", ret: "#CA8A04", fail: "#EA580C", delivered: "#16A34A", returned: "#EAB308", cancel: "#111827", lost: "#F87171", scrap: "#F87171" };
+      function stageHtml(code, label) {
+        let c = String(code || "").trim().toLowerCase();
+        if (!STAGE_RULES[c]) c = STAGE_FROM_VN[String(label || code || "").trim().toLowerCase()] || c;
+        const rule = STAGE_RULES[c];
+        const text = String(label || STAGE_VN[c] || code || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        if (!rule) return text;
+        const [flow, step, kind] = rule;
+        const fillColor = STAGE_COLORS[kind && kind !== "fail" ? kind : flow];
+        const segs = [1, 2, 3, 4].map(i => {
+          const color = i < step ? STAGE_COLORS[flow] : i === step ? (kind === "fail" ? STAGE_COLORS.fail : fillColor) : "";
+          const finalColor = step === 4 && kind && kind !== "fail" ? fillColor : color;
+          return `<span class="stage-seg"${finalColor ? ` style="background:${finalColor}"` : ""}></span>`;
+        }).join("");
+        const names = flow === "ret" ? ["Chuyển hoàn", "Trung chuyển", "Đang hoàn", "Xong"] : ["Lấy", "Kho", "Giao", "Xong"];
+        const cls = kind ? `st-${kind}` : `st-${flow}`;
+        return `<div class="stage ${cls}" title="${flow === "ret" ? "Chiều hoàn" : "Chiều giao"} · bước ${step}/4"><span class="stage-label">${text}</span><div class="stage-bar">${segs}</div><div class="stage-names">${names.map((n, i) => i + 1 === step ? `<b>${n}</b>` : `<span>${n}</span>`).join("")}</div></div>`;
+      }
       function chkStatusRowClass(status) {
         const s = String(status || "").toLowerCase();
         if (s.includes("cancel")) return "chk-status-cancel";
@@ -5067,8 +5116,8 @@
             }
             if (field === "status_vn") {
               const val = chkCellValue(r, field);
-              const isScrap = String(r.status || "").toLowerCase().includes("scrap");
-              return `<td${cls}>${isScrap ? `<span class="chk-scrap-blink">${val}</span>` : val}</td>`;
+              if (r.message) return `<td${cls}>${val}</td>`;
+              return `<td${cls}>${stageHtml(r.status, val)}</td>`;
             }
             if (CHK_WH_ID_FIELD_MAP[field]) {
               const val = chkCellValue(r, field);
@@ -5732,7 +5781,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-10-31.4";
+    const APP_BUILD = "2026-10-31.5";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
