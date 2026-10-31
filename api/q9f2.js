@@ -35,7 +35,7 @@ module.exports = async (req, res) => {
   const target = process.env.N8N_WEBHOOK_URL;
 
   if (!target) {
-    res.status(500).json({ ok: false, message: "Server chưa cấu hình N8N_WEBHOOK_URL." });
+    res.status(500).json({ ok: false, message: "Hệ thống chưa sẵn sàng, vui lòng báo admin." });
     return;
   }
 
@@ -70,7 +70,7 @@ module.exports = async (req, res) => {
     );
     res.send(text);
   } catch (err) {
-    res.status(502).json({ ok: false, message: "Không gọi được webhook n8n." });
+    res.status(502).json({ ok: false, message: "Không kết nối được hệ thống, thử lại sau." });
   }
 };
 
