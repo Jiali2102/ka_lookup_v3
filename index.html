@@ -5447,9 +5447,31 @@
     const authSubmitBtn = authForm.querySelector(".auth-submit");
     const btnSwitchGoogle = document.getElementById("btn-switch-google");
 
+    const AUTH_NAME_KEY = "ka_lookup_name_v1";
+    function renderWatermark() {
+      let wm = document.getElementById("ka-watermark");
+      const email = sessionEmail || "";
+      if (!email) { if (wm) wm.remove(); return; }
+      let name = "";
+      try { name = localStorage.getItem(AUTH_NAME_KEY) || ""; } catch (err) { }
+      const label = `${name ? name + " " : ""}${email}`;
+      const escX = x => String(x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="170"><text x="150" y="95" text-anchor="middle" transform="rotate(-24 150 85)" font-family="Cambria, 'Times New Roman', serif" font-size="13" fill="rgba(55,65,81,0.10)">${escX(label)}</text></svg>`;
+      if (!wm) {
+        wm = document.createElement("div");
+        wm.id = "ka-watermark";
+        wm.setAttribute("aria-hidden", "true");
+        wm.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:2147483000;background-repeat:repeat;";
+        document.body.appendChild(wm);
+      }
+      wm.style.backgroundImage = `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}")`;
+    }
+    new MutationObserver(() => { if (sessionEmail && !document.getElementById("ka-watermark")) renderWatermark(); }).observe(document.body, { childList: true });
+
     function unlockApp() {
       authGate.style.display = "none";
       appRoot.style.display = "block";
+      renderWatermark();
       initApp();
     }
 
@@ -5482,6 +5504,7 @@
         const res = await fetch(`/api/m3k7?${params.toString()}`);
         const data = await res.json();
         if (data.ok) {
+          try { if (data.name) localStorage.setItem(AUTH_NAME_KEY, data.name); } catch (err) { }
           showPasswordStep(data.email);
           if (data.r) startApprovalPoll(data.email, data.r);
           else triggerAutoGenPass(data.email);
@@ -5669,9 +5692,11 @@
         localStorage.removeItem(AUTH_STORAGE_KEY);
         localStorage.removeItem(AUTH_PASSWORD_KEY);
         localStorage.removeItem(AUTH_EMAIL_KEY);
+        localStorage.removeItem(AUTH_NAME_KEY);
       } catch (err) { }
       sessionPassword = "";
       sessionEmail = "";
+      renderWatermark();
       appRoot.style.display = "none";
       authGate.style.display = "";
       authPasswordInput.value = "";
@@ -5707,7 +5732,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-10-31.3";
+    const APP_BUILD = "2026-10-31.4";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
