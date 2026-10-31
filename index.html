@@ -1915,10 +1915,31 @@
     }
 
     .state.error {
-      color: var(--danger);
-      border-color: #f3c9c9;
-      background: var(--danger-bg);
+      color: #7f1d1d;
+      border: 2px solid #ef4444;
+      border-left-width: 2px;
+      background: #fef2f2;
+      font-weight: 600;
+      padding: 26px 22px;
+      box-shadow: 0 6px 22px rgba(239, 68, 68, 0.18);
+      animation: kaErrIn .45s ease-out, kaErrPulse 2.4s ease-in-out .45s 3;
     }
+
+    .err-box { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .err-icon { width: 46px; height: 46px; border-radius: 50%; background: #dc2626; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 800; box-shadow: 0 0 0 6px rgba(220, 38, 38, .15); }
+    .err-title { font-size: 19px; font-weight: 800; color: #991b1b; line-height: 1.35; }
+    .err-msg { font-size: 15.5px; color: #7f1d1d; line-height: 1.45; max-width: 640px; }
+    .err-hint { font-size: 14px; font-weight: 600; color: #9a3412; background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px; padding: 6px 12px; }
+    .err-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+    .err-actions button { font-weight: 700; }
+    .err-btn-main { background: #dc2626; color: #fff; border: 0; border-radius: 9px; padding: 9px 16px; font-family: inherit; font-size: 14.5px; cursor: pointer; }
+    .err-btn-main:hover { background: #b91c1c; }
+    @keyframes kaErrIn { 0% { transform: translateX(0); opacity: 0; } 20% { opacity: 1; } 35% { transform: translateX(-8px); } 55% { transform: translateX(7px); } 75% { transform: translateX(-4px); } 100% { transform: translateX(0); } }
+    @keyframes kaErrPulse { 0%, 100% { box-shadow: 0 6px 22px rgba(239, 68, 68, .18); } 50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, .28); } }
+
+    #approve-warn { animation: kaWarnPulse 1.8s ease-in-out infinite; }
+    @keyframes kaWarnPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(234, 88, 12, .45); } 50% { box-shadow: 0 0 0 7px rgba(234, 88, 12, 0); } }
+    #approve-status.waiting { font-size: 15px; font-weight: 700; color: #0e4174; }
 
     .state.loading {
       color: var(--muted);
@@ -2177,7 +2198,6 @@
   <div id="auth-gate">
     <div id="google-step" class="auth-card">
       <div class="auth-mark">JL212</div>
-      <h2>Tra cứu</h2>
       <p>Đăng nhập tài khoản <strong>GIAO HÀNG NHANH</ strong></p>
       <div id="g_id_onload"
         data-client_id="382454937501-sn3ire0hsbbscpsjtr9blff6d9ruiujs.apps.googleusercontent.com"
@@ -2191,14 +2211,17 @@
 
     <form id="auth-form" class="auth-card" style="display:none;">
       <div class="auth-mark">JL212</div>
-      <h2>Tra cứu</h2>
       <p>Xin chào <strong id="google-email-display"></strong></p>
       <input type="password" id="auth-password" placeholder="Mật khẩu" autocomplete="off" autofocus />
       <button type="submit" class="btn-primary auth-submit">Vào trang</button>
       <button type="button" id="btn-switch-google" class="auth-link-btn">← Đăng nhập Google khác</button>
       <p id="auth-error" class="auth-error"></p>
       <p class="request-status" id="approve-status">Liên hệ admin để nhận mật khẩu.</p>
-      <p id="approve-warn" style="display:none;margin:8px 0 0;padding:8px 10px;border-radius:8px;background:#FFF4ED;border:1px solid #F5C9A9;color:#9A3412;font-size:13px;font-weight:700;line-height:1.4;">Vui lòng KHÔNG tắt hoặc tải lại trang cho đến khi được duyệt. Trang sẽ tự vào khi admin chấp nhận.</p>
+      <div id="approve-warn" style="display:none;margin:12px 0 0;padding:14px 14px 12px;border-radius:12px;background:#EA580C;color:#FFFFFF;text-align:center;line-height:1.45;">
+        <div style="font-size:26px;line-height:1;margin-bottom:6px;">⚠️</div>
+        <div style="font-size:16.5px;font-weight:800;letter-spacing:.2px;">KHÔNG tắt hoặc tải lại trang</div>
+        <div style="font-size:14px;font-weight:600;margin-top:4px;">cho đến khi được admin duyệt. Trang sẽ <u>tự vào</u> ngay khi được chấp nhận.</div>
+      </div>
       <button type="button" id="btn-check-approve" class="auth-link-btn" style="display:none;">Kiểm tra lại</button>
     </form>
   </div>
@@ -2214,7 +2237,7 @@
       </div>
 
       <div class="side-panel" id="side-panel-normal">
-        <div class="app-title">Tra cứu</div>
+        <div class="app-title" id="main-app-title"></div>
         <p class="hint" id="panel-hint"></p>
 
         <label class="field-label">Danh sách mã đơn</label>
@@ -2245,6 +2268,9 @@
           <button class="btn-ghost" id="btn-clear">Xóa</button>
           <span class="count-tag" id="code-count"></span>
         </div>
+
+        <div class="chk-history-title"><span>🕘 Lịch sử gần đây · <b id="main-history-tab"></b></span><button class="h-clear-all" id="main-history-clear" title="Xóa lịch sử của mục này">🗑 Xóa tất cả</button></div>
+        <div id="main-history-list"></div>
       </div>
 
       <div class="side-panel" id="side-panel-checker" style="display:none;">
@@ -2313,7 +2339,7 @@
         </div>
 
         <div id="chk-mode-panel-v2" style="display:none;">
-          <p class="hint">Tra từ nguồn dữ liệu BI. Dữ liệu có thể trễ hơn Realtime, chuyển sang ⚡ Realtime khi cần trạng thái mới nhất.</p>
+          <p class="hint">Dữ liệu có thể trễ hơn Realtime, chuyển sang ⚡ Realtime khi cần trạng thái mới nhất.</p>
           <label class="field-label">Danh sách mã đơn</label>
           <textarea id="dv2-codes-input"
             placeholder="Dán mã đơn cần tra, mỗi dòng 1 mã hoặc cách nhau dấu phẩy."></textarea>
@@ -2511,6 +2537,8 @@
         const activeTabEl = el(".tabs .tab.active");
         if (activeTabEl) flashTab(activeTabEl);
         el("#panel-hint").textContent = cfg.hint;
+        const mt = el("#main-app-title");
+        if (mt) mt.textContent = String(cfg.label || "").replace(/<[^>]+>/g, "").trim();
         dateRow.style.display = cfg.useDateRange ? "flex" : "none";
         const saved = tabState[key];
         if (saved) {
@@ -2535,6 +2563,7 @@
           updateCount();
         }
         if (key === "tonghop" && tongHopState) renderTongHop(tongHopState);
+        if (typeof mainRenderHistory === "function") mainRenderHistory();
       }
       function updateCount() {
         const n = parseCodes(codesInput.value).length;
@@ -3075,7 +3104,7 @@
               <tbody>${body || `<tr><td colspan="${TH_SOURCES.length + 2}" class="th-no">Không có mã nào khớp bộ lọc</td></tr>`}</tbody>
             </table>
           </div>
-          ${srcErr.length ? `<div class="state error" style="margin-top:10px;">⚠️ Một số nguồn bị lỗi, cột tương ứng có thể thiếu: ${srcErr.map(([k, v]) => `${thEsc(k)}: ${thEsc(v)}`).join("; ")}</div>` : ""}`;
+          ${srcErr.length ? `<div class="state error" style="margin-top:10px;">⚠️ Một số mục bị lỗi, cột tương ứng có thể thiếu: ${srcErr.map(([k, v]) => `${thEsc(k)}: ${thEsc(friendlyMsg(v))}`).join("; ")}</div>` : ""}`;
         renderNotFound([]);
         resultsArea.querySelectorAll("[data-th-chip]").forEach(c => {
           c.onclick = e => {
@@ -3178,14 +3207,14 @@
         lastElapsedMs = state.ms;
         const failedCodes = state.failed.reduce((n, f) => n + f.count, 0);
         if (!state.items.length && state.failed.length && failedCodes >= state.codes.length) {
-          resultsArea.innerHTML = `<div class="state error">⚠️ Không thể tải dữ liệu: ${thEsc(state.failed[0].message)}<br/><span style="font-size:14.5px;">Thời gian: ${(state.ms / 1000).toFixed(1)}s. Kiểm tra n8n workflow có đang bật không, rồi thử lại.</span><div style="margin-top:10px;"><button class="btn-ghost" id="btn-retry-failed">🔁 Tra lại ${failedCodes} mã</button></div></div>`;
+          resultsArea.innerHTML = errBoxHtml(state.failed[0].message, `<button class="btn-ghost" id="btn-retry-failed">🔁 Tra lại ${failedCodes} mã</button>`, `Thời gian: ${(state.ms / 1000).toFixed(1)}s`);
           renderNotFound([]);
           thBindRetry(state);
           return;
         }
         renderTongHop(state);
         if (state.failed.length) {
-          const failNote = state.failed.map(f => `lượt ${f.index} (${f.count} mã, lỗi: ${thEsc(f.message)})`).join("; ");
+          const failNote = state.failed.map(f => `lượt ${f.index} (${f.count} mã, lỗi: ${thEsc(friendlyMsg(f.message))})`).join("; ");
           resultsArea.insertAdjacentHTML("beforeend", `<div class="state error" style="margin-top:10px;">⚠️ ${state.failed.length} lượt bị lỗi (${failedCodes} mã chưa tra được), kết quả có thể chưa đầy đủ: ${failNote}<div style="margin-top:8px;"><button class="btn-ghost" id="btn-retry-failed">🔁 Tra lại ${failedCodes} mã bị lỗi</button></div></div>`);
           thBindRetry(state);
         }
@@ -3213,11 +3242,12 @@
         await thRunChunks(state, codes, "Đang tra cứu");
         el("#btn-search").disabled = false;
         thRenderAfterSearch(state);
+        mainSaveHistory("tonghop", { codes, found: new Set(state.items.map(it => String(it.order_code || "").toUpperCase())).size, failed: state.failed.length, thState: state });
       }
       async function doSearch() {
         const cfg = CONFIG.TABS[activeTab];
         if (cfg.notReady) {
-          resultsArea.innerHTML = `<div class="empty"><div class="big">🚧</div>Chưa có nguồn dữ liệu cho mục này.<br/>Sẽ bổ sung khi có Google Sheet miễn cước.</div>`;
+          resultsArea.innerHTML = `<div class="empty"><div class="big">🚧</div>Chưa có dữ liệu cho mục này.<br/>Sẽ bổ sung trong thời gian tới.</div>`;
           el("#notfound-area").innerHTML = "";
           return;
         }
@@ -3273,17 +3303,107 @@
         el("#btn-search").disabled = false;
         if (failedChunks.length === totalChunks) {
           const msg = failedChunks[0].message;
-          resultsArea.innerHTML = `<div class="state error">⚠️ Không thể tải dữ liệu: ${msg}<br/><span style="font-size:14.5px;">Kiểm tra lại URL webhook trong cấu hình, hoặc n8n workflow có đang bật không.</span></div>`;
+          resultsArea.innerHTML = errBoxHtml(msg);
           el("#notfound-area").innerHTML = "";
           return;
         }
         renderResults(allItems, codes);
+        mainSaveHistory(activeTab, { codes, from: cfg.useDateRange ? dateFrom.value : "", to: cfg.useDateRange ? dateTo.value : "", found: new Set(allItems.map(it => String(it.order_code || it.ma_don || "").toUpperCase()).filter(Boolean)).size, failed: failedChunks.length, items: allItems });
         if (failedChunks.length) {
-          const failNote = failedChunks.map(f => `lượt ${f.index} (${f.count} mã, lỗi: ${f.message})`).join("; ");
+          const failNote = failedChunks.map(f => `lượt ${f.index} (${f.count} mã, lỗi: ${thEsc(friendlyMsg(f.message))})`).join("; ");
           resultsArea.innerHTML += `<div class="state error" style="margin-top:10px;">⚠️ ${failedChunks.length}/${totalChunks} lượt tra cứu bị lỗi, kết quả có thể chưa đầy đủ: ${failNote}. Thử tra cứu lại để bổ sung phần còn thiếu.</div>`;
         }
       }
       el("#btn-search").onclick = doSearch;
+
+      const MAIN_HISTORY_KEY = "ka_lookup_main_history_v1";
+      const MAIN_HISTORY_MAX = 5;
+      const mhEsc = x => String(x ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      function mainLoadAll() {
+        try { const raw = localStorage.getItem(MAIN_HISTORY_KEY); const o = raw ? JSON.parse(raw) : {}; return o && typeof o === "object" ? o : {}; } catch (err) { return {}; }
+      }
+      function mainStoreAll(all) {
+        for (let attempt = 0; attempt < 12; attempt++) {
+          try { localStorage.setItem(MAIN_HISTORY_KEY, JSON.stringify(all)); return; } catch (err) {
+            let biggest = null, size = 0;
+            for (const [tab, list] of Object.entries(all)) list.forEach((x, i) => { if (x.items || x.thState) { const n = JSON.stringify(x.items || x.thState).length; if (n > size) { size = n; biggest = [tab, i]; } } });
+            if (!biggest) return;
+            const x = all[biggest[0]][biggest[1]];
+            delete x.items;
+            delete x.thState;
+          }
+        }
+      }
+      function mainSaveHistory(tab, data) {
+        const all = mainLoadAll();
+        const entry = { time: new Date().toLocaleString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" }), codes: data.codes || [], requested: (data.codes || []).length, found: data.found || 0, failed: data.failed || 0, from: data.from || "", to: data.to || "" };
+        const snap = data.thState || data.items;
+        if (snap && JSON.stringify(snap).length < 900000) { if (data.thState) entry.thState = data.thState; else entry.items = data.items; }
+        all[tab] = [entry, ...(all[tab] || [])].slice(0, MAIN_HISTORY_MAX);
+        mainStoreAll(all);
+        mainRenderHistory();
+      }
+      function mainRenderHistory() {
+        const listEl = el("#main-history-list");
+        if (!listEl) return;
+        const cfg = CONFIG.TABS[activeTab] || {};
+        el("#main-history-tab").textContent = String(cfg.label || "").replace(/<[^>]+>/g, "").trim();
+        const h = mainLoadAll()[activeTab] || [];
+        el("#main-history-clear").style.display = h.length ? "" : "none";
+        if (!h.length) { listEl.innerHTML = `<div class="chk-history-empty">Chưa có lịch sử</div>`; return; }
+        listEl.innerHTML = h.map((x, i) => {
+          const what = x.requested ? `${x.found}/${x.requested} mã` : `${x.from} → ${x.to}`;
+          const saved = x.items || x.thState;
+          return `<div class="chk-history-item" data-mh-index="${i}" title="${saved ? "Bấm để xem lại kết quả đã lưu" : "Kết quả lớn không lưu được, bấm để nạp lại danh sách mã"}">
+            <div class="h-time">${mhEsc(x.time)}</div>
+            <div class="h-count">${mhEsc(what)}${x.failed ? ` · ${x.failed} lượt lỗi` : ""}${saved ? "" : " · cần tra lại"}</div>
+            <button class="h-del" data-mh-del="${i}" title="Xóa lần tra này">✕</button>
+          </div>`;
+        }).join("");
+      }
+      el("#main-history-clear").addEventListener("click", () => {
+        if (!confirm("Xóa toàn bộ lịch sử tra cứu của mục này trên máy này?")) return;
+        const all = mainLoadAll();
+        delete all[activeTab];
+        mainStoreAll(all);
+        mainRenderHistory();
+      });
+      el("#main-history-list").addEventListener("click", e => {
+        const del = e.target.closest("[data-mh-del]");
+        const all = mainLoadAll();
+        const list = all[activeTab] || [];
+        if (del) {
+          e.stopPropagation();
+          list.splice(Number(del.dataset.mhDel), 1);
+          all[activeTab] = list;
+          mainStoreAll(all);
+          mainRenderHistory();
+          return;
+        }
+        const item = e.target.closest(".chk-history-item");
+        if (!item) return;
+        const x = list[Number(item.dataset.mhIndex)];
+        if (!x) return;
+        document.querySelectorAll("#main-history-list .chk-history-item").forEach(n => n.classList.remove("active"));
+        item.classList.add("active");
+        codesInput.value = (x.codes || []).join("\n");
+        if (x.from) dateFrom.value = x.from;
+        if (x.to) dateTo.value = x.to;
+        updateCount();
+        if (activeTab === "tonghop" && x.thState) {
+          thFilter = {};
+          tongHopState = x.thState;
+          thRenderAfterSearch(x.thState);
+          return;
+        }
+        if (x.items) {
+          renderResults(x.items, x.codes || []);
+          return;
+        }
+        resultsArea.innerHTML = `<div class="empty"><div class="big">🕘</div>Đã nạp lại ${x.requested} mã từ lần tra ${mhEsc(x.time)}.<br/>Bấm <b>Tra cứu</b> để tra lại.</div>`;
+        el("#notfound-area").innerHTML = "";
+      });
+      mainRenderHistory();
       el("#btn-clear").onclick = () => {
         codesInput.value = "";
         dateFrom.value = "";
@@ -3956,26 +4076,25 @@
         }).join("")}</tr>`).join("");
         const nfHtml = s.notFound.length ? `
           <div class="state error" style="margin-top:10px;">
-            ⚠️ Không tìm thấy ${s.notFound.length} mã (chỉ có đơn tạo từ đầu tháng ${dv2WindowStart()} trở lại đây, thuộc nhóm client trong nguồn dữ liệu).
+            ⚠️ Không tìm thấy ${s.notFound.length} mã (chỉ có đơn tạo từ đầu tháng ${dv2WindowStart()} trở lại đây, thuộc nhóm khách hàng KA).
             <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
               <button class="btn-ghost" id="dv2-btn-copy-nf">📋 Copy mã không tìm thấy</button>
               <button class="btn-ghost" id="dv2-btn-nf-realtime">↪ Kiểm tra Realtime các mã này</button>
             </div>
           </div>` : "";
         const errCodes = s.errors.reduce((n, e) => n + (e.count || 0), 0);
-        const errHtml = s.errors.length ? `<div class="state error" style="margin-top:10px;">⚠️ ${s.errors.length} lượt bị lỗi (${errCodes} mã chưa tra được), kết quả có thể chưa đầy đủ: ${s.errors.map(e => `lượt ${e.index} (${e.count} mã): ${dv2Esc(e.message)}`).join("; ")}
+        const errHtml = s.errors.length ? `<div class="state error" style="margin-top:10px;">⚠️ ${s.errors.length} lượt bị lỗi (${errCodes} mã chưa tra được), kết quả có thể chưa đầy đủ: ${s.errors.map(e => `lượt ${e.index} (${e.count} mã): ${dv2Esc(friendlyMsg(e.message))}`).join("; ")}
             <div style="margin-top:8px;"><button class="btn-ghost" id="dv2-btn-retry">🔁 Tra lại ${errCodes} mã bị lỗi</button></div></div>` : "";
         const invHtml = s.invalid.length ? `<div style="margin-top:8px;font-size:13.5px;color:var(--muted);">Bỏ qua ${s.invalid.length} mã sai định dạng: ${s.invalid.map(dv2Esc).join(", ")}</div>` : "";
         const noExp = dv2Columns().filter(c => !dv2ExportColumns().includes(c));
         const neHtml = noExp.length ? `<div style="margin-top:8px;font-size:13.5px;color:var(--muted);">🔒 Chỉ xem, không có trong file tải và Copy: ${noExp.map(dv2Esc).join(", ")}</div>` : "";
-        const mcHtml = (s.missingColumns || []).length ? `<div style="margin-top:8px;font-size:13.5px;color:var(--muted);">ℹ️ Cột khai báo nhưng card không có: ${s.missingColumns.map(dv2Esc).join(", ")}</div>` : "";
-        const dupHtml = s.duplicates ? `<div style="margin-top:8px;font-size:13.5px;color:var(--muted);">ℹ️ Nguồn dữ liệu trả ${s.duplicates} dòng trùng mã đơn, đã giữ dòng đầu tiên.</div>` : "";
+        const mcHtml = (s.missingColumns || []).length ? `<div style="margin-top:8px;font-size:13.5px;color:var(--muted);">ℹ️ Một số cột chưa có dữ liệu: ${s.missingColumns.map(dv2Esc).join(", ")}</div>` : "";
+        const dupHtml = s.duplicates ? `<div style="margin-top:8px;font-size:13.5px;color:var(--muted);">ℹ️ Có ${s.duplicates} dòng trùng mã đơn, đã giữ dòng đầu tiên.</div>` : "";
         dv2ResultsArea.innerHTML = `
           <div class="toolbar dv2-toolbar">
             <span class="stats">
               <span class="stat-badge total">Tìm thấy: ${s.items.length}/${s.requested}</span>
               <span class="stat-badge">⏱ ${(s.ms / 1000).toFixed(1)}s</span>
-              ${s.queryMode ? `<span class="stat-badge dv2-mode" title="Cách truy vấn nguồn dữ liệu">${s.queryMode === "inlist" ? "⚡ IN-list" : "🐢 card"}</span>` : ""}
               ${statusChips}
             </span>
             <div class="toolbar-actions"${s.items.length ? "" : ' style="display:none;"'}>
@@ -5280,6 +5399,23 @@
     }
   </script>
 
+  <script>
+    function friendlyMsg(m) {
+      const t = String(m || "");
+      if (/Không có quyền truy cập|đăng nhập lại|Phiên đăng nhập không hợp lệ|không được cấp quyền/i.test(t)) return "Phiên đăng nhập đã hết hiệu lực hoặc đã bị thu hồi.";
+      if (/n8n|workflow|webhook|N8N_|credential|Header Auth|lookup_v2/i.test(t)) return "Hệ thống tạm thời không phản hồi.";
+      if (/^HTTP (5\d\d)$/.test(t) || /Failed to fetch|NetworkError|Load failed/i.test(t)) return "Không kết nối được hệ thống.";
+      return t;
+    }
+    function errBoxHtml(raw, extraBtn, meta) {
+      const esc = x => String(x ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const msg = friendlyMsg(raw);
+      const revoked = /hết hiệu lực|bị thu hồi/.test(msg);
+      const hint = revoked ? "Bấm Đăng xuất rồi đăng nhập Google lại để tiếp tục tra cứu." : "Vui lòng thử lại sau ít phút. Nếu vẫn lỗi, báo admin.";
+      const btns = [revoked ? `<button class="err-btn-main" type="button" onclick="doLogout()">Đăng xuất & đăng nhập lại</button>` : "", extraBtn || ""].filter(Boolean).join("");
+      return `<div class="state error"><div class="err-box"><div class="err-icon">!</div><div class="err-title">${revoked ? "Bạn cần đăng nhập lại" : "Không thể tải dữ liệu"}</div><div class="err-msg">${esc(msg)}${meta ? ` · ${esc(meta)}` : ""}</div><div class="err-hint">${hint}</div>${btns ? `<div class="err-actions">${btns}</div>` : ""}</div></div>`;
+    }
+  </script>
   <script>const WEBHOOK_BASE_URL = "/api/q9f2";
   </script>
 
@@ -5381,6 +5517,7 @@
 
     function setWaiting(on) {
       approveWarn.style.display = on ? "" : "none";
+      approveStatus.classList.toggle("waiting", on);
       if (on) window.addEventListener("beforeunload", onBeforeUnloadWaiting);
       else window.removeEventListener("beforeunload", onBeforeUnloadWaiting);
     }
@@ -5570,7 +5707,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-10-30.2";
+    const APP_BUILD = "2026-10-31.3";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
