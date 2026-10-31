@@ -109,19 +109,19 @@ module.exports = async (req, res) => {
       signal: ctrl.signal
     });
     if (upstream.status === 401 || upstream.status === 403) {
-      res.status(200).json({ ok: false, message: "N8N_LOOKUP_V2_KEY không khớp credential Header Auth của webhook lookup_v2 trong n8n." });
+      res.status(200).json({ ok: false, message: "Hệ thống từ chối kết nối, vui lòng báo admin." });
       return;
     }
     if (upstream.status === 404) {
-      res.status(200).json({ ok: false, message: "Không thấy webhook lookup_v2: kiểm tra N8N_LOOKUP_V2_URL và workflow đã Active chưa." });
+      res.status(200).json({ ok: false, message: "Hệ thống tra cứu đang tạm dừng, vui lòng báo admin." });
       return;
     }
     const text = await upstream.text();
     let data;
-    try { data = JSON.parse(text); } catch (err) { data = { ok: false, message: `n8n trả về dữ liệu không hợp lệ (HTTP ${upstream.status}).` }; }
+    try { data = JSON.parse(text); } catch (err) { data = { ok: false, message: `Hệ thống trả về dữ liệu không hợp lệ (HTTP ${upstream.status}).` }; }
     res.status(200).json(data);
   } catch (err) {
-    res.status(504).json({ ok: false, message: err.name === "AbortError" ? "Quá thời gian chờ (55 giây), thử lại với ít mã hơn." : "Không gọi được n8n." });
+    res.status(504).json({ ok: false, message: err.name === "AbortError" ? "Quá thời gian chờ (55 giây), thử lại với ít mã hơn." : "Không kết nối được hệ thống, thử lại sau." });
   } finally {
     clearTimeout(timer);
   }
