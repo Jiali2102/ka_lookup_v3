@@ -3180,6 +3180,7 @@
       async function thRunChunks(state, codes, label) {
         const chunks = chunkArray(codes, TH_CHUNK);
         const t0 = Date.now();
+        const batchId = t0.toString(36) + Math.random().toString(36).slice(2, 6);
         let done = 0;
         let found = 0;
         const results = new Array(chunks.length);
@@ -3196,6 +3197,7 @@
             e: sessionEmail,
             k: sessionPassword
           });
+          if (chunks.length > 1) { params.set("b", batchId); params.set("bn", String(chunks.length)); params.set("bi", String(i + 1)); params.set("bt", String(t0)); }
           try {
             const res = await fetch(`${CONFIG.WEBHOOK_URL}?${params.toString()}`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -3289,6 +3291,8 @@
         currentPage = 1;
         const codeChunks = codes.length > CODES_PER_REQUEST ? chunkArray(codes, CODES_PER_REQUEST) : [codes];
         const totalChunks = codeChunks.length;
+        const batchId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        const batchStart = Date.now();
         let allItems = [];
         const failedChunks = [];
         for (let i = 0; i < totalChunks; i++) {
@@ -3300,6 +3304,7 @@
             e: sessionEmail,
             k: sessionPassword
           });
+          if (totalChunks > 1) { params.set("b", batchId); params.set("bn", String(totalChunks)); params.set("bi", String(i + 1)); params.set("bt", String(batchStart)); }
           if (cfg.useDateRange) {
             if (dateFrom.value) params.set("f", dateFrom.value);
             if (dateTo.value) params.set("g", dateTo.value);
@@ -5781,7 +5786,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-10-31.5";
+    const APP_BUILD = "2026-11-02.1";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
