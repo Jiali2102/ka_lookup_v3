@@ -2231,8 +2231,10 @@
     <form id="auth-form" class="auth-card" style="display:none;">
       <div class="auth-mark">JL212</div>
       <p>Xin chào <strong id="google-email-display"></strong></p>
-      <input type="password" id="auth-password" placeholder="Mật khẩu" autocomplete="off" autofocus />
-      <button type="submit" class="btn-primary auth-submit">Vào trang</button>
+      <div id="auth-pass-box">
+        <input type="password" id="auth-password" placeholder="Mật khẩu" autocomplete="off" autofocus />
+        <button type="submit" class="btn-primary auth-submit">Vào trang</button>
+      </div>
       <button type="button" id="btn-switch-google" class="auth-link-btn">← Đăng nhập Google khác</button>
       <p id="auth-error" class="auth-error"></p>
       <p class="request-status" id="approve-status">Liên hệ admin để nhận mật khẩu.</p>
@@ -2241,7 +2243,8 @@
         <div style="font-size:16.5px;font-weight:800;letter-spacing:.2px;">KHÔNG tắt hoặc tải lại trang</div>
         <div style="font-size:14px;font-weight:600;margin-top:4px;">cho đến khi được admin duyệt. Trang sẽ <u>tự vào</u> ngay khi được chấp nhận.</div>
       </div>
-      <button type="button" id="btn-check-approve" class="auth-link-btn" style="display:none;">Kiểm tra lại</button>
+      <button type="button" id="btn-check-approve" class="btn-primary auth-submit" style="display:none;margin-top:10px;">Kiểm tra lại</button>
+      <button type="button" id="btn-show-pass" class="auth-link-btn" style="display:none;">Có mật khẩu admin gửi? Nhập tại đây</button>
     </form>
   </div>
 
@@ -5561,7 +5564,7 @@
           try { if (data.name) localStorage.setItem(AUTH_NAME_KEY, data.name); } catch (err) { }
           showPasswordStep(data.email);
           if (data.r) startApprovalPoll(data.email, data.r);
-          else triggerAutoGenPass(data.email);
+          else { setPassVisible(true); btnShowPass.style.display = "none"; triggerAutoGenPass(data.email); }
         } else {
           googleError.textContent = data.message || "Xác minh Google thất bại.";
         }
@@ -5573,6 +5576,7 @@
 
     btnSwitchGoogle.addEventListener("click", () => {
       stopApprovalPoll();
+      if (typeof setPassVisible === "function") { setPassVisible(true); btnShowPass.style.display = "none"; }
       setWaiting(false);
       approvePoll.token = "";
       sessionEmail = "";
@@ -5581,8 +5585,16 @@
 
     const approveStatus = document.getElementById("approve-status");
     const btnCheckApprove = document.getElementById("btn-check-approve");
-    const APPROVE_INTERVAL_MS = 30000;
-    const APPROVE_MAX_TRIES = 6;
+    const APPROVE_INTERVAL_MS = 15000;
+    const APPROVE_MAX_TRIES = 3;
+    const passBox = document.getElementById("auth-pass-box");
+    const btnShowPass = document.getElementById("btn-show-pass");
+    function setPassVisible(on) {
+      passBox.style.display = on ? "" : "none";
+      btnShowPass.style.display = on ? "none" : "";
+      if (on) authPasswordInput.focus();
+    }
+    btnShowPass.addEventListener("click", () => setPassVisible(true));
     const approvePoll = { timer: null, tick: null, nextAt: 0, tries: 0, token: "", email: "", busy: false };
     const approveWarn = document.getElementById("approve-warn");
 
@@ -5609,14 +5621,14 @@
     function renderCountdown() {
       const sec = Math.max(0, Math.ceil((approvePoll.nextAt - Date.now()) / 1000));
       approveStatus.textContent = sec > 0
-        ? `Đang chờ admin duyệt… tự kiểm tra lần ${approvePoll.tries + 1}/${APPROVE_MAX_TRIES} sau ${sec} giây.`
-        : `Đang kiểm tra lần ${approvePoll.tries + 1}/${APPROVE_MAX_TRIES}…`;
+        ? `Đang chờ admin duyệt… tự đăng nhập sau ${sec} giây.`
+        : `Đang kiểm tra…`;
     }
 
     function scheduleApprovalCheck() {
       if (approvePoll.tries >= APPROVE_MAX_TRIES) {
         stopApprovalPoll();
-        approveStatus.textContent = "Chưa được duyệt sau 3 phút. Khi admin báo đã duyệt, bấm \"Kiểm tra lại\" hoặc nhập mật khẩu admin gửi.";
+        approveStatus.textContent = "Admin chưa duyệt. Khi admin báo đã duyệt, bấm \"Kiểm tra lại\" để tự đăng nhập.";
         btnCheckApprove.style.display = "";
         return;
       }
@@ -5633,6 +5645,7 @@
       approvePoll.token = token;
       approvePoll.tries = 0;
       btnCheckApprove.style.display = "none";
+      setPassVisible(false);
       setWaiting(true);
       scheduleApprovalCheck();
     }
@@ -5660,6 +5673,7 @@
           if (ok) { approvePoll.token = ""; completeLogin(data.k); return; }
         } catch (err) { }
         approveStatus.textContent = "Đã được duyệt nhưng chưa vào được. Vui lòng nhập mật khẩu admin gửi.";
+        setPassVisible(true);
         btnCheckApprove.style.display = "none";
         return;
       }
@@ -5786,7 +5800,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-11-02.1";
+    const APP_BUILD = "2026-11-02.2";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
