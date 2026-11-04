@@ -2447,6 +2447,7 @@
           denbu: {
             label: "Đền bù",
             useDateRange: false,
+            chunkSize: 2000,
             knownFields: ["so_tien", "loai_yeu_cau", "ngay_duyet"],
             amountFields: ["so_tien"],
             dateFields: ["ngay_duyet"],
@@ -2455,6 +2456,7 @@
           quahan: {
             label: "Quá hạn",
             useDateRange: false,
+            chunkSize: 2000,
             knownFields: ["reason", "overdue_date"],
             amountFields: [],
             dateFields: ["overdue_date"],
@@ -2464,6 +2466,7 @@
             label: "Miễn cước",
             useDateRange: false,
             codeLabel: "Mã đơn hàng",
+            chunkSize: 2000,
             sumField: "so_tien_mien",
             sumLabel: "Tổng ST miễn cước",
             knownFields: ["client_name", "lay_thanh_cong", "so_tien_mien", "ly_do", "thang_mien_cuoc"],
@@ -3334,42 +3337,68 @@
         }
         el("#btn-search").disabled = true;
         currentPage = 1;
-        const codeChunks = codes.length > CODES_PER_REQUEST ? chunkArray(codes, CODES_PER_REQUEST) : [codes];
+        const perReq = window.__kaGetMode ? CODES_PER_REQUEST : (cfg.chunkSize || CODES_PER_REQUEST);
+        const codeChunks = codes.length > perReq ? chunkArray(codes, perReq) : [codes];
         const totalChunks = codeChunks.length;
         const batchId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         const batchStart = Date.now();
         const runSum = kaSumNew(codeChunks.flat().length);
         let allItems = [];
         const failedChunks = [];
+        const baseParams = () => {
+          const p = new URLSearchParams({ t: TYPE_WIRE_MAP[activeTab] || activeTab, e: sessionEmail, k: sessionPassword });
+          if (cfg.useDateRange) {
+            if (dateFrom.value) p.set("f", dateFrom.value);
+            if (dateTo.value) p.set("g", dateTo.value);
+          }
+          return p;
+        };
+        const askOnce = async (params, list, extra) => {
+          const res = await kaPost(CONFIG.WEBHOOK_URL, params, list.join(","), extra);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          if (data.ok === false) throw new Error(data.message || "Lỗi không xác định");
+          return Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : [];
+        };
         for (let i = 0; i < totalChunks; i++) {
           const chunk = codeChunks[i];
+          const isLast = i === totalChunks - 1;
           resultsArea.innerHTML = `<div class="state loading"><span class="spinner"></span>Đang tra cứu${totalChunks > 1 ? ` — lượt ${i + 1}/${totalChunks} (${chunk.length} mã)` : "..."}</div>`;
-          const params = new URLSearchParams({
-            t: TYPE_WIRE_MAP[activeTab] || activeTab,
-            c: chunk.join(","),
-            e: sessionEmail,
-            k: sessionPassword
-          });
+          const params = baseParams();
           if (totalChunks > 1) { params.set("b", batchId); params.set("bn", String(totalChunks)); params.set("bi", String(i + 1)); params.set("bt", String(batchStart)); }
-          if (cfg.useDateRange) {
-            if (dateFrom.value) params.set("f", dateFrom.value);
-            if (dateTo.value) params.set("g", dateTo.value);
-          }
           try {
-            const res = await kaPost(CONFIG.WEBHOOK_URL, params, chunk.join(","), totalChunks > 1 && i === totalChunks - 1 ? { sum: runSum } : null);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
-            if (data.ok === false) throw new Error(data.message || "Lỗi không xác định");
-            const items = Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : [];
+            const items = await askOnce(params, chunk, totalChunks > 1 && isLast ? { sum: runSum } : null);
             kaSumAdd(runSum, chunk, items, null, i + 1, false);
             allItems.push(...items);
+            continue;
           } catch (err) {
-            kaSumAdd(runSum, chunk, [], err.message, i + 1, false);
-            failedChunks.push({
-              index: i + 1,
-              count: chunk.length,
-              message: err.message
-            });
+            if (chunk.length <= CODES_PER_REQUEST) {
+              kaSumAdd(runSum, chunk, [], err.message, i + 1, false);
+              failedChunks.push({ index: i + 1, count: chunk.length, message: err.message });
+              continue;
+            }
+          }
+          const halves = chunkArray(chunk, Math.ceil(chunk.length / 2));
+          for (let h = 0; h < halves.length; h++) {
+            const part = halves[h];
+            const lastPart = h === halves.length - 1;
+            resultsArea.innerHTML = `<div class="state loading"><span class="spinner"></span>Đang tra cứu — lượt ${i + 1}/${totalChunks} tách nhỏ ${h + 1}/${halves.length} (${part.length} mã)</div>`;
+            const p = baseParams();
+            let extra = null;
+            if (isLast && lastPart) {
+              p.set("b", batchId); p.set("bn", String(Math.max(totalChunks, 2))); p.set("bi", String(Math.max(totalChunks, 2))); p.set("bt", String(batchStart));
+              extra = { sum: runSum };
+            } else {
+              p.set("nolog", "1");
+            }
+            try {
+              const items = await askOnce(p, part, extra);
+              kaSumAdd(runSum, part, items, null, i + 1, false);
+              allItems.push(...items);
+            } catch (err2) {
+              kaSumAdd(runSum, part, [], err2.message, i + 1, false);
+              failedChunks.push({ index: i + 1, count: part.length, message: err2.message });
+            }
           }
         }
         el("#btn-search").disabled = false;
@@ -3840,7 +3869,8 @@
       })();
 
       const DV2_ENDPOINT = "/api/v2x4";
-      const DV2_CHUNK = 500;
+      const DV2_CHUNK = 2000;
+      const DV2_SPLIT = 500;
       const DV2_WINDOW_MONTHS = 12;
       const DV2_PARALLEL = 2;
       const DV2_HISTORY_KEY = "ka_lookup_dv2_history_v1";
@@ -3992,13 +4022,27 @@
           while (cursor < chunks.length) {
             const i = cursor++;
             try {
-              const res = await fetch(DV2_ENDPOINT, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ c: chunks[i], e: sessionEmail, k: sessionPassword, q: 1 })
-              });
-              const data = await res.json().catch(() => ({ ok: false, message: `HTTP ${res.status}` }));
-              if (data.ok !== true) throw new Error(data.message || `HTTP ${res.status}`);
+              const ask = async list => {
+                const res = await fetch(DV2_ENDPOINT, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ c: list, e: sessionEmail, k: sessionPassword, q: 1 })
+                });
+                const data = await res.json().catch(() => ({ ok: false, message: `HTTP ${res.status}` }));
+                if (data.ok !== true) throw new Error(data.message || `HTTP ${res.status}`);
+                return data;
+              };
+              let data;
+              try {
+                data = await ask(chunks[i]);
+              } catch (bigErr) {
+                if (chunks[i].length <= DV2_SPLIT) throw bigErr;
+                const parts = [];
+                for (let p = 0; p < chunks[i].length; p += DV2_SPLIT) parts.push(chunks[i].slice(p, p + DV2_SPLIT));
+                const got = [];
+                for (const part of parts) got.push(await ask(part));
+                data = { ...got[0], items: got.flatMap(g => g.items || []) };
+              }
               results[i] = { data };
               foundSoFar += (data.items || []).length;
             } catch (err) {
@@ -5508,8 +5552,9 @@
       const body = JSON.stringify({ c: codes, ...(extra || {}) });
       try {
         const res = await fetch(`${url}?${qs.toString()}`, { method: "POST", headers: { "content-type": "application/json" }, body });
-        if (res.status !== 404 && res.status !== 405) return res;
+        if (res.status !== 404 && res.status !== 405) { window.__kaGetMode = false; return res; }
       } catch (err) { }
+      window.__kaGetMode = true;
       const q2 = new URLSearchParams(params);
       q2.set("c", codes);
       if (extra && extra.sum) {
@@ -5872,7 +5917,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-11-04.5";
+    const APP_BUILD = "2026-11-04.6";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
