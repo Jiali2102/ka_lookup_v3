@@ -5798,6 +5798,17 @@
         if (data.ok) {
           try { if (data.name) localStorage.setItem(AUTH_NAME_KEY, data.name); } catch (err) { }
           showPasswordStep(data.email);
+          if (!data.r && data.vp) {
+            approveStatus.textContent = "Đang gửi yêu cầu duyệt qua đường dự phòng…";
+            try {
+              const p2 = new URLSearchParams({ t: "v7", e: data.email, vp: data.vp });
+              const r2 = await fetch(`${WEBHOOK_BASE_URL}?${p2.toString()}`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+              const j2 = await r2.json().catch(() => null);
+              if (j2 && j2.r) data.r = j2.r;
+              else if (j2 && j2.ok === false && j2.message) data.rerr = j2.message;
+              else data.rerr = `${data.rerr || ""} · đường dự phòng HTTP ${r2.status}`;
+            } catch (err) { data.rerr = `${data.rerr || ""} · đường dự phòng lỗi kết nối`; }
+          }
           if (data.r) startApprovalPoll(data.email, data.r);
           else {
             setPassVisible(false);
@@ -6051,7 +6062,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-11-04.9";
+    const APP_BUILD = "2026-11-04.10";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
