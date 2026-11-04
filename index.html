@@ -5802,7 +5802,7 @@
           else {
             setPassVisible(false);
             setWaiting(false);
-            approveStatus.textContent = `Chưa gửi được yêu cầu duyệt tới admin${data.rerr ? ` (${data.rerr})` : ""}. Bấm "Gửi lại yêu cầu duyệt".`;
+            approveStatus.textContent = `Chưa gửi được yêu cầu duyệt tới admin${data.rerr ? ` (${data.rerr})` : ""}. Bấm "Gửi lại yêu cầu duyệt".${data.build ? "" : " [máy chủ đang chạy m3k7.js bản cũ]"}`;
             btnCheckApprove.style.display = "";
             btnCheckApprove.textContent = "Gửi lại yêu cầu duyệt";
             btnCheckApprove.dataset.resend = "1";
@@ -6051,7 +6051,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-11-04.8";
+    const APP_BUILD = "2026-11-04.9";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
