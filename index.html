@@ -1584,6 +1584,7 @@
       border-color: #f3c9c9;
       background: var(--danger-bg);
     }
+    .stat-badge.sum { background: #FFF4ED; color: #9A3412; border-color: #F5C9A9; font-weight: 700; }
 
     .toolbar-actions {
       display: flex;
@@ -2458,6 +2459,8 @@
             label: "Miễn cước",
             useDateRange: false,
             codeLabel: "Mã đơn hàng",
+            sumField: "so_tien_mien",
+            sumLabel: "Tổng ST miễn cước",
             knownFields: ["client_name", "lay_thanh_cong", "so_tien_mien", "ly_do", "thang_mien_cuoc"],
             amountFields: ["so_tien_mien"],
             dateFields: ["lay_thanh_cong", "thang_mien_cuoc"],
@@ -2879,7 +2882,12 @@
           const foundSet = new Set(allItems.map(i => getCode(i).toString().toUpperCase()));
           const foundCount = lastRequestedCodes.filter(c => foundSet.has(c.toUpperCase())).length;
           notFoundCodes = lastRequestedCodes.filter(c => !foundSet.has(c.toUpperCase()));
-          statsHtml = `\n      <div class="stats">\n        <span class="stat-badge total">Tổng mã đơn: ${lastRequestedCodes.length}</span>\n        <span class="stat-badge found">Có kết quả: ${foundCount}</span>\n        <span class="stat-badge notfound">Không có kết quả: ${notFoundCodes.length}</span>\n      </div>`;
+          const sumHtml = cfg.sumField ? (() => {
+            const rows = allItems;
+            const total = rows.reduce((a, it) => a + (Number(it[cfg.sumField]) || 0), 0);
+            return `\n        <span class="stat-badge sum">${cfg.sumLabel || "Tổng"}: ${formatMoney(total)}</span>`;
+          })() : "";
+          statsHtml = `\n      <div class="stats">\n        <span class="stat-badge total">Tổng mã đơn: ${lastRequestedCodes.length}</span>\n        <span class="stat-badge found">Có kết quả: ${foundCount}</span>\n        <span class="stat-badge notfound">Không có kết quả: ${notFoundCodes.length}</span>${sumHtml}\n      </div>`;
         }
         renderNotFound(notFoundCodes);
         if (!allItems.length) {
@@ -5808,7 +5816,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-11-04.1";
+    const APP_BUILD = "2026-11-04.2";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
