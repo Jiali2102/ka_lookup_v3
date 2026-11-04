@@ -5671,7 +5671,9 @@
       }
     }
 
+    let lastCredential = "";
     async function handleGoogleCredential(response) {
+      lastCredential = response.credential || lastCredential;
       googleError.textContent = "Đang xác minh với Google...";
       try {
         const params = new URLSearchParams({ i: response.credential });
@@ -5681,7 +5683,14 @@
           try { if (data.name) localStorage.setItem(AUTH_NAME_KEY, data.name); } catch (err) { }
           showPasswordStep(data.email);
           if (data.r) startApprovalPoll(data.email, data.r);
-          else { setPassVisible(true); btnShowPass.style.display = "none"; triggerAutoGenPass(data.email); }
+          else {
+            setPassVisible(false);
+            setWaiting(false);
+            approveStatus.textContent = `Chưa gửi được yêu cầu duyệt tới admin${data.rerr ? ` (${data.rerr})` : ""}. Bấm "Gửi lại yêu cầu duyệt".`;
+            btnCheckApprove.style.display = "";
+            btnCheckApprove.textContent = "Gửi lại yêu cầu duyệt";
+            btnCheckApprove.dataset.resend = "1";
+          }
         } else {
           googleError.textContent = data.message || "Xác minh Google thất bại.";
         }
@@ -5817,6 +5826,15 @@
     }
 
     btnCheckApprove.addEventListener("click", async () => {
+      if (btnCheckApprove.dataset.resend === "1") {
+        delete btnCheckApprove.dataset.resend;
+        btnCheckApprove.textContent = "Kiểm tra lại";
+        btnCheckApprove.style.display = "none";
+        approveStatus.textContent = "Đang gửi lại yêu cầu duyệt…";
+        if (lastCredential) await handleGoogleCredential({ credential: lastCredential });
+        else { approveStatus.textContent = "Vui lòng đăng nhập Google lại."; showGoogleStep(); }
+        return;
+      }
       btnCheckApprove.disabled = true;
       await checkApproval(true);
       setTimeout(() => { btnCheckApprove.disabled = false; }, 3000);
@@ -5917,7 +5935,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-11-04.6";
+    const APP_BUILD = "2026-11-04.7";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
