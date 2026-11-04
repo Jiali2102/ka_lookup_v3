@@ -47,7 +47,7 @@ module.exports = async (req, res) => {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 12000);
         try {
-          const up = await fetch(`${target}?${params.toString()}`, { method: "GET", headers: key ? { "x-kl-key": key } : {}, signal: ctrl.signal });
+          const up = await fetch(`${target}?${params.toString()}`, { method: "POST", headers: { ...(key ? { "x-kl-key": key } : {}), "content-type": "application/json" }, body: "{}", signal: ctrl.signal });
           const j = await up.json().catch(() => null);
           if (j && j.ok === false) {
             clearTimeout(timer);
