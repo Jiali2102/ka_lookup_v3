@@ -531,6 +531,11 @@
       opacity: .9;
     }
 
+    .nf-toggle.nf-docked {
+      padding: 8px 16px;
+      font-size: 13px;
+    }
+
     .nf-drawer {
       position: fixed;
       top: 0;
@@ -2785,6 +2790,24 @@
         const aoa = buildExportRows(cfg);
         downloadJsonFromAoa(aoa, `${exportFileBaseName()}.json`);
       }
+      function placeNfToggle() {
+        const btn = el("#btn-toggle-notfound");
+        if (!btn || btn.style.display === "none") return;
+        const pg = [...document.querySelectorAll(".main-col .pagination")].find(p => p.offsetParent !== null);
+        const r = pg ? pg.getBoundingClientRect() : null;
+        if (r && r.height && r.bottom > 0 && r.top < window.innerHeight - 10) {
+          btn.classList.add("nf-docked");
+          btn.style.bottom = "auto";
+          btn.style.top = `${Math.round(r.top + (r.height - btn.offsetHeight) / 2)}px`;
+        } else {
+          btn.classList.remove("nf-docked");
+          btn.style.top = "auto";
+          btn.style.bottom = "22px";
+        }
+      }
+      window.addEventListener("resize", () => placeNfToggle());
+      document.addEventListener("scroll", () => placeNfToggle(), true);
+      new MutationObserver(() => requestAnimationFrame(placeNfToggle)).observe(document.body, { childList: true, subtree: true });
       function renderNotFound(codes) {
         const area = el("#notfound-area");
         const toggleBtn = el("#btn-toggle-notfound");
@@ -3218,7 +3241,7 @@
           });
           if (chunks.length > 1) { params.set("b", batchId); params.set("bn", String(chunks.length)); params.set("bi", String(i + 1)); params.set("bt", String(t0)); }
           try {
-            const res = await fetch(`${CONFIG.WEBHOOK_URL}?${params.toString()}`);
+            const res = await kaPost(CONFIG.WEBHOOK_URL, params, chunks[i].join(","));
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             if (data.ok === false) throw new Error(data.message || "Lỗi không xác định");
@@ -3329,7 +3352,7 @@
             if (dateTo.value) params.set("g", dateTo.value);
           }
           try {
-            const res = await fetch(`${CONFIG.WEBHOOK_URL}?${params.toString()}`);
+            const res = await kaPost(CONFIG.WEBHOOK_URL, params, chunk.join(","));
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             if (data.ok === false) throw new Error(data.message || "Lỗi không xác định");
@@ -5473,6 +5496,18 @@
   </script>
 
   <script>
+    async function kaPost(url, params, codes) {
+      const qs = new URLSearchParams(params);
+      qs.delete("c");
+      const body = JSON.stringify({ c: codes });
+      try {
+        const res = await fetch(`${url}?${qs.toString()}`, { method: "POST", headers: { "content-type": "application/json" }, body });
+        if (res.status !== 404 && res.status !== 405) return res;
+      } catch (err) { }
+      const q2 = new URLSearchParams(params);
+      q2.set("c", codes);
+      return fetch(`${url}?${q2.toString()}`);
+    }
     function friendlyMsg(m) {
       const t = String(m || "");
       if (/Không có quyền truy cập|đăng nhập lại|Phiên đăng nhập không hợp lệ|không được cấp quyền/i.test(t)) return "Phiên đăng nhập đã hết hiệu lực hoặc đã bị thu hồi.";
@@ -5816,7 +5851,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-11-04.2";
+    const APP_BUILD = "2026-11-04.3";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
