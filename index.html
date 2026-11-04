@@ -3985,6 +3985,34 @@
       })();
 
       const DV2_ENDPOINT = "/api/v2x4";
+      const DV2_DIRECT_URL = "https://n8n-workflow.ghn.vn/webhook/kl2-pub";
+      let dv2Ticket = null;
+      async function dv2GetTicket(force) {
+        if (!force && dv2Ticket && dv2Ticket.exp - 5 * 60000 > Date.now() && dv2Ticket.email === sessionEmail) return dv2Ticket.lt;
+        try {
+          const r = await kaCall({ t: "v10", e: sessionEmail, k: sessionPassword });
+          const j = await r.json();
+          if (j && j.lt) { dv2Ticket = { lt: j.lt, exp: Number(j.exp) || Date.now() + 3600000, email: sessionEmail }; return j.lt; }
+        } catch (err) { }
+        return null;
+      }
+      async function dv2Fetch(payload) {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const lt = await dv2GetTicket(attempt > 0);
+          if (!lt) break;
+          try {
+            const { k, ...rest } = payload;
+            const res = await fetch(DV2_DIRECT_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...rest, lt }) });
+            const ct = res.headers.get("content-type") || "";
+            if (!ct.includes("json")) break;
+            const data = await res.json();
+            if (data && data.ok === false && /phiên đăng nhập/i.test(String(data.message || "")) && attempt === 0) continue;
+            return data;
+          } catch (err) { break; }
+        }
+        const res = await fetch(DV2_ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        return res.json().catch(() => ({ ok: false, message: `HTTP ${res.status}` }));
+      }
       const DV2_CHUNK = 2000;
       const DV2_SPLIT = 500;
       const DV2_WINDOW_MONTHS = 12;
@@ -4139,13 +4167,8 @@
             const i = cursor++;
             try {
               const ask = async list => {
-                const res = await fetch(DV2_ENDPOINT, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ c: list, e: sessionEmail, k: sessionPassword, q: 1 })
-                });
-                const data = await res.json().catch(() => ({ ok: false, message: `HTTP ${res.status}` }));
-                if (data.ok !== true) throw new Error(data.message || `HTTP ${res.status}`);
+                const data = await dv2Fetch({ c: list, e: sessionEmail, k: sessionPassword, q: 1 });
+                if (!data || data.ok !== true) throw new Error((data && data.message) || "Lỗi tra cứu BI");
                 return data;
               };
               let data;
@@ -4206,11 +4229,7 @@
           codes,
           notFound: (state.notFound || []).filter(c => codeSet.has(c))
         };
-        fetch(DV2_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kind: "log", e: sessionEmail, k: sessionPassword, summary })
-        }).catch(() => { });
+        dv2Fetch({ kind: "log", e: sessionEmail, k: sessionPassword, summary }).catch(() => { });
       }
 
       async function dv2Run() {
@@ -6069,7 +6088,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-11-04.11";
+    const APP_BUILD = "2026-11-04.12";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
