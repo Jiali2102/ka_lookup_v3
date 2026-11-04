@@ -48,14 +48,19 @@ module.exports = async (req, res) => {
         const timer = setTimeout(() => ctrl.abort(), 12000);
         try {
           const up = await fetch(`${target}?${params.toString()}`, { method: "POST", headers: { ...(key ? { "x-kl-key": key } : {}), "content-type": "application/json" }, body: "{}", signal: ctrl.signal });
-          const j = await up.json().catch(() => null);
+          const raw = await up.text().catch(() => "");
+          let j = null;
+          try { j = raw ? JSON.parse(raw) : null; } catch (e) { j = null; }
           if (j && j.ok === false) {
             clearTimeout(timer);
             res.status(200).json({ ok: false, message: j.message || "Tài khoản này không được cấp quyền truy cập." });
             return;
           }
           if (j && j.r) reqToken = String(j.r);
-          else reqErr = `hệ thống trả HTTP ${up.status}${j ? "" : " không có dữ liệu"}`;
+          else {
+            const hint = String((j && (j.message || j.error)) || raw || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 90);
+            reqErr = `hệ thống trả HTTP ${up.status}${hint ? `: ${hint}` : " không có dữ liệu"} · gọi POST · khoá ${key ? `${key.length} ký tự` : "TRỐNG"}`;
+          }
         } catch (err) {
           reqErr = err && err.name === "AbortError" ? "hệ thống phản hồi quá 12 giây" : "không kết nối được hệ thống";
         } finally {
@@ -64,7 +69,7 @@ module.exports = async (req, res) => {
       }
     }
 
-    res.status(200).json({ ok: true, email, name: String(data.name || "").slice(0, 80), r: reqToken, rerr: reqToken ? "" : reqErr });
+    res.status(200).json({ ok: true, email, name: String(data.name || "").slice(0, 80), r: reqToken, rerr: reqToken ? "" : reqErr, build: "m3k7-2026-11-04.9" });
   } catch (err) {
     res.status(502).json({ ok: false, message: "Không xác minh được, thử lại." });
   }
