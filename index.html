@@ -1589,6 +1589,19 @@
       border-color: #f3c9c9;
       background: var(--danger-bg);
     }
+
+    .pivot-active { background: #0E4174 !important; color: #fff !important; border-color: #0E4174 !important; }
+    .pivot-wrap { display: flex; flex-direction: column; gap: 10px; }
+    .pivot-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+    .pivot-controls select { font-family: inherit; font-size: 14px; padding: 5px 8px; border: 1px solid var(--line, #E5E7EB); border-radius: 8px; background: #fff; }
+    .pivot-hint { color: var(--muted, #6B7280); font-size: 12.5px; margin-left: auto; }
+    .pivot-row { cursor: pointer; }
+    .pivot-row:hover td { background: #FFF6F0; }
+    .pivot-pct { position: relative; min-width: 120px; }
+    .pivot-pct .pivot-bar { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); height: 60%; background: #FDE2CF; border-radius: 4px; z-index: 0; max-width: calc(100% - 16px); }
+    .pivot-pct b { position: relative; z-index: 1; }
+    .pivot-table tfoot td { background: #F8F5F0; border-top: 2px solid #E5E0D8; padding: 12px 14px; }
+    .pivot-drill { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; border-radius: 10px; background: #EEF4FB; color: #0E4174; font-size: 13.5px; margin-bottom: 8px; }
     .stat-badge.sum { background: #FFF4ED; color: #9A3412; border-color: #F5C9A9; font-weight: 700; }
 
     .toolbar-actions {
@@ -2451,7 +2464,8 @@
             knownFields: ["so_tien", "loai_yeu_cau", "ngay_duyet"],
             amountFields: ["so_tien"],
             dateFields: ["ngay_duyet"],
-            statusField: null
+            statusField: null,
+            pivot: { dims: [{ key: "loai_yeu_cau", label: "Loại yêu cầu" }, { key: "ngay_duyet", label: "Tháng duyệt", month: true }], value: { field: "so_tien", label: "Giá trị đền bù" } }
           },
           quahan: {
             label: "Quá hạn",
@@ -2460,7 +2474,8 @@
             knownFields: ["reason", "overdue_date"],
             amountFields: [],
             dateFields: ["overdue_date"],
-            statusField: null
+            statusField: null,
+            pivot: { dims: [{ key: "reason", label: "Lý do" }, { key: "overdue_date", label: "Tháng chốt", month: true }], value: null }
           },
           miencuoc: {
             label: "Miễn cước",
@@ -2473,6 +2488,7 @@
             amountFields: ["so_tien_mien"],
             dateFields: ["lay_thanh_cong", "thang_mien_cuoc"],
             statusField: null,
+            pivot: { dims: [{ key: "client_name", label: "Khách hàng" }, { key: "ly_do", label: "Lý do" }, { key: "thang_mien_cuoc", label: "Tháng miễn cước", month: true }], value: { field: "so_tien_mien", label: "ST miễn cước" } },
             labels: {
               client_name: "Khách hàng",
               lay_thanh_cong: "Lấy thành công",
@@ -2499,7 +2515,8 @@
             knownFields: ["month", "client_type"],
             amountFields: [],
             dateFields: ["month"],
-            statusField: null
+            statusField: null,
+            pivot: { dims: [{ key: "month", label: "Tháng", month: true }, { key: "client_type", label: "Loại client" }], value: null }
           }
         },
         FIELD_LABELS: {
@@ -2899,6 +2916,97 @@
         currentPage = 1;
         rerenderTable();
       }
+      const pivotState = {};
+      function pivotKey(v, month) {
+        const t = String(v ?? "").trim();
+        if (!month) return t;
+        const m = t.match(/^(\d{4})-(\d{2})/);
+        if (m) return `${m[1]}-${m[2]}`;
+        const m2 = t.match(/^(\d{1,2})\/(\d{4})$/);
+        return m2 ? `${m2[2]}-${m2[1].padStart(2, "0")}` : t;
+      }
+      function pivotRows(cfg, items) {
+        const p = cfg.pivot;
+        const st = pivotState[activeTab] || {};
+        const d1 = p.dims.find(d => d.key === st.d1) || p.dims[0];
+        const d2 = st.d2 === "" ? null : (p.dims.find(d => d.key === st.d2 && d.key !== d1.key) || null);
+        const map = new Map();
+        let totalCount = 0, totalVal = 0;
+        const totalCodes = new Set();
+        for (const it of items) {
+          const a = pivotKey(it[d1.key], d1.month);
+          const b = d2 ? pivotKey(it[d2.key], d2.month) : "";
+          const k = `${a}\u0001${b}`;
+          const r = map.get(k) || { a, b, codes: new Set(), rows: 0, val: 0 };
+          const code = String(getCode(it) || "").toUpperCase();
+          r.codes.add(code);
+          r.rows++;
+          if (p.value) r.val += Number(it[p.value.field]) || 0;
+          map.set(k, r);
+          totalCodes.add(code);
+          totalVal += p.value ? Number(it[p.value.field]) || 0 : 0;
+          totalCount++;
+        }
+        const rows = [...map.values()].sort((x, y) => (p.value ? y.val - x.val : y.codes.size - x.codes.size) || String(x.a).localeCompare(String(y.a)) || String(x.b).localeCompare(String(y.b)));
+        return { d1, d2, rows, totalCodes: totalCodes.size, totalVal, totalCount };
+      }
+      function pivotHtml(cfg, items) {
+        const p = cfg.pivot;
+        const st = pivotState[activeTab] || {};
+        const { d1, d2, rows, totalCodes, totalVal } = pivotRows(cfg, items);
+        const opt = (sel, allowNone) => `${allowNone ? `<option value="" ${sel === null ? "selected" : ""}>(không)</option>` : ""}${p.dims.map(d => `<option value="${d.key}" ${sel && sel.key === d.key ? "selected" : ""}>${thEsc(d.label)}</option>`).join("")}`;
+        const base = p.value ? totalVal : totalCodes;
+        const max = Math.max(1, ...rows.map(r => p.value ? r.val : r.codes.size));
+        const body = rows.map((r, i) => {
+          const v = p.value ? r.val : r.codes.size;
+          const pct = base ? (v / base * 100) : 0;
+          return `<tr class="pivot-row" data-pv="${i}"><td>${thEsc(r.a || "(trống)")}</td>${d2 ? `<td>${thEsc(r.b || "(trống)")}</td>` : ""}<td class="align-right">${r.codes.size.toLocaleString("vi-VN")}</td>${p.value ? `<td class="amount-cell">${formatMoney(r.val)}</td>` : ""}<td class="pivot-pct"><span class="pivot-bar" style="width:${Math.round(v / max * 100)}%"></span><b>${pct.toFixed(1).replace(".", ",")}%</b></td></tr>`;
+        }).join("");
+        return `<div class="pivot-wrap">
+          <div class="pivot-controls">Nhóm theo <select id="pv-d1">${opt(d1, false)}</select> rồi theo <select id="pv-d2">${opt(d2, true)}</select><span class="pivot-hint">${rows.length.toLocaleString("vi-VN")} nhóm · bấm 1 dòng để xem danh sách đơn</span><button class="btn-ghost" id="btn-pivot-dl">⬇ Tải Pivot (.xlsx)</button></div>
+          <div class="results-table-wrap"><table class="result-table pivot-table">
+            <thead><tr><th>${thEsc(d1.label)}</th>${d2 ? `<th>${thEsc(d2.label)}</th>` : ""}<th class="align-right">Số đơn</th>${p.value ? `<th class="align-right">${thEsc(p.value.label)}</th>` : ""}<th>Tỷ lệ</th></tr></thead>
+            <tbody>${body}</tbody>
+            <tfoot><tr><td><b>Tổng</b></td>${d2 ? "<td></td>" : ""}<td class="align-right"><b>${totalCodes.toLocaleString("vi-VN")}</b></td>${p.value ? `<td class="amount-cell"><b>${formatMoney(totalVal)}</b></td>` : ""}<td><b>100%</b></td></tr></tfoot>
+          </table></div>
+        </div>`;
+      }
+      function bindPivot(cfg) {
+        const btn = el("#btn-pivot");
+        if (!btn) return;
+        const st = pivotState[activeTab] = pivotState[activeTab] || {};
+        btn.onclick = () => { st.on = !st.on; if (st.on) st.drill = null; rerenderTable(); };
+        const und = el("#btn-pivot-undrill");
+        if (und) und.onclick = () => { st.drill = null; st.on = true; rerenderTable(); };
+        if (!st.on) return;
+        const d1 = el("#pv-d1"), d2 = el("#pv-d2");
+        if (d1) d1.onchange = () => { st.d1 = d1.value; if (st.d2 === d1.value) st.d2 = ""; rerenderTable(); };
+        if (d2) d2.onchange = () => { st.d2 = d2.value; rerenderTable(); };
+        const all = lastResults;
+        const pr = pivotRows(cfg, all);
+        document.querySelectorAll(".pivot-row").forEach(tr => {
+          tr.onclick = () => {
+            const r = pr.rows[Number(tr.dataset.pv)];
+            if (!r) return;
+            st.drill = [[pr.d1.key, r.a, !!pr.d1.month], ...(pr.d2 ? [[pr.d2.key, r.b, !!pr.d2.month]] : [])];
+            st.on = false;
+            currentPage = 1;
+            rerenderTable();
+          };
+        });
+        const dl = el("#btn-pivot-dl");
+        if (dl) dl.onclick = () => {
+          const p = cfg.pivot;
+          const head = [pr.d1.label, ...(pr.d2 ? [pr.d2.label] : []), "Số đơn", ...(p.value ? [p.value.label] : [])];
+          const aoa = [head, ...pr.rows.map(r => [r.a, ...(pr.d2 ? [r.b] : []), r.codes.size, ...(p.value ? [r.val] : [])]), ["Tổng", ...(pr.d2 ? [""] : []), pr.totalCodes, ...(p.value ? [pr.totalVal] : [])]];
+          const detailFields = [...cfg.knownFields];
+          const detail = [[cfg.codeLabel || "Mã đơn", ...detailFields.map(f => (cfg.labels || {})[f] || CONFIG.FIELD_LABELS[f] || f)], ...all.map(it => [getCode(it), ...detailFields.map(f => it[f] ?? "")])];
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "Pivot");
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detail), "Chi tiết");
+          XLSX.writeFile(wb, `pivot_${activeTab}_${new Date().toLocaleString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" }).slice(0, 16).replace(/[-: ]/g, "")}.xlsx`);
+        };
+      }
       function rerenderTable() {
         const allItems = lastFullItems;
         const cfg = CONFIG.TABS[activeTab];
@@ -2923,6 +3031,10 @@
         }
         const filterTerms = parseCodes(searchQuery);
         let items = allItems;
+        const pv = cfg.pivot && pivotState[activeTab];
+        if (pv && pv.drill) {
+          items = items.filter(it => pv.drill.every(([k, v, m]) => pivotKey(it[k], m) === v));
+        }
         if (filterTerms.length) {
           const termsUpper = filterTerms.map(t => t.toUpperCase());
           items = allItems.filter(it => {
@@ -2943,7 +3055,10 @@
         const startIdx = (currentPage - 1) * pageSize;
         const pageItems = items.slice(startIdx, startIdx + pageSize);
         const pageSizeOptions = [10, 20, 50, 100].map(n => `<option value="${n}" ${n === pageSize ? "selected" : ""}>${n}</option>`).join("");
-        const toolbarHtml = `\n    <div class="toolbar">\n      ${statsHtml}\n      <div class="toolbar-actions">\n        <label class="pagesize-label">Hiện <select id="page-size-select">${pageSizeOptions}</select> / trang</label>\n        <button class="btn-ghost" id="btn-copy-found">📋 Copy mã đơn</button>\n        <div class="dl-wrap">\n          <button class="btn-ghost" id="btn-dl-toggle">⬇ Tải ▾</button>\n          <div class="dl-menu" id="dl-menu">\n            <div class="dl-item" data-fmt="xlsx">Excel (.xlsx)</div>\n            <div class="dl-item" data-fmt="csv">CSV (.csv)</div>\n            <div class="dl-item" data-fmt="json">JSON (.json)</div>\n          </div>\n        </div>\n      </div>\n    </div>`;
+        const pivotOn = !!(pv && pv.on);
+        const pivotBtn = cfg.pivot ? `<button class="btn-ghost${pivotOn ? " pivot-active" : ""}" id="btn-pivot">${pivotOn ? "📋 Bảng" : "📊 Pivot"}</button>` : "";
+        const drillChip = pv && pv.drill ? `<div class="pivot-drill">Đang lọc theo Pivot: <b>${pv.drill.map(d => thEsc(d[1] || "(trống)")).join(" · ")}</b> · ${items.length} dòng <button class="btn-ghost" id="btn-pivot-undrill">✕ Bỏ lọc</button></div>` : "";
+        const toolbarHtml = `\n    <div class="toolbar">\n      ${statsHtml}\n      <div class="toolbar-actions">\n        ${pivotBtn}\n        <label class="pagesize-label">Hiện <select id="page-size-select">${pageSizeOptions}</select> / trang</label>\n        <button class="btn-ghost" id="btn-copy-found">📋 Copy mã đơn</button>\n        <div class="dl-wrap">\n          <button class="btn-ghost" id="btn-dl-toggle">⬇ Tải ▾</button>\n          <div class="dl-menu" id="dl-menu">\n            <div class="dl-item" data-fmt="xlsx">Excel (.xlsx)</div>\n            <div class="dl-item" data-fmt="csv">CSV (.csv)</div>\n            <div class="dl-item" data-fmt="json">JSON (.json)</div>\n          </div>\n        </div>\n      </div>\n    </div>`;
         const headerFieldKeys = [null, ...cfg.knownFields];
         const headerCells = [cfg.codeLabel || "Mã đơn", ...cfg.knownFields.map(f => (cfg.labels || {})[f] || CONFIG.FIELD_LABELS[f] || f)];
         const theadHtml = `<tr>${headerCells.map((h, i) => {
@@ -2983,7 +3098,8 @@
           length: totalPages
         }, (_, i) => i + 1).map(p => `<option value="${p}" ${p === currentPage ? "selected" : ""}>Trang ${p}</option>`).join("");
         const paginationHtml = totalPages > 1 ? `\n    <div class="pagination">\n      <button class="btn-ghost" id="btn-prev-page" ${currentPage <= 1 ? "disabled" : ""}>← Trước</button>\n      <select id="page-jump-select" class="page-jump-select">${pageJumpOptions}</select>\n      <span class="page-indicator">/ ${totalPages} (${items.length} kết quả)</span>\n      <button class="btn-ghost" id="btn-next-page" ${currentPage >= totalPages ? "disabled" : ""}>Sau →</button>\n    </div>` : `<div class="pagination"><span class="page-indicator">${items.length} kết quả</span></div>`;
-        resultsArea.innerHTML = `\n    ${toolbarHtml}\n    ${searchBoxHtml}\n    <div class="results-table-wrap">\n      <table class="result-table">\n        <thead>${theadHtml}</thead>\n        <tbody>${rowsHtml}</tbody>\n      </table>\n    </div>\n    ${paginationHtml}`;
+        resultsArea.innerHTML = pivotOn ? `\n    ${toolbarHtml}\n    ${searchBoxHtml}\n    ${pivotHtml(cfg, items)}` : `\n    ${toolbarHtml}\n    ${searchBoxHtml}\n    ${drillChip}\n    <div class="results-table-wrap">\n      <table class="result-table">\n        <thead>${theadHtml}</thead>\n        <tbody>${rowsHtml}</tbody>\n      </table>\n    </div>\n    ${paginationHtml}`;
+        bindPivot(cfg);
         el("#btn-copy-found").onclick = copyFoundCodes;
         el("#btn-dl-toggle").onclick = e => {
           e.stopPropagation();
@@ -5935,7 +6051,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-11-04.7";
+    const APP_BUILD = "2026-11-04.8";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
