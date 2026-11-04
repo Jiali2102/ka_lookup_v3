@@ -5662,23 +5662,37 @@
   </script>
 
   <script>
-    async function kaPost(url, params, codes, extra) {
+    const KA_DIRECT_URL = "https://n8n-workflow.ghn.vn/webhook/kac-v2-pub";
+    async function kaCall(paramsObj, bodyExtra) {
+      const params = {};
+      for (const [k, v] of Object.entries(paramsObj || {})) if (v !== undefined && v !== null && k !== "c") params[k] = String(v);
+      const extra = bodyExtra || {};
+      if (window.__kaDirect !== false) {
+        try {
+          const res = await fetch(KA_DIRECT_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...params, ...extra }) });
+          const ct = res.headers.get("content-type") || "";
+          if (ct.includes("json")) { window.__kaDirect = true; window.__kaRoute = "direct"; return res; }
+        } catch (err) { }
+        if (window.__kaDirect === undefined) window.__kaDirect = false;
+      }
       const qs = new URLSearchParams(params);
-      qs.delete("c");
-      const body = JSON.stringify({ c: codes, ...(extra || {}) });
+      window.__kaRoute = "proxy";
       try {
-        const res = await fetch(`${url}?${qs.toString()}`, { method: "POST", headers: { "content-type": "application/json" }, body });
+        const res = await fetch(`${WEBHOOK_BASE_URL}?${qs.toString()}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(extra) });
         if (res.status !== 404 && res.status !== 405) { window.__kaGetMode = false; return res; }
       } catch (err) { }
       window.__kaGetMode = true;
       const q2 = new URLSearchParams(params);
-      q2.set("c", codes);
-      if (extra && extra.sum) {
+      if (extra.c) q2.set("c", extra.c);
+      if (extra.sum) {
         q2.set("stotal", String(extra.sum.total || 0));
         q2.set("sfound", String(extra.sum.found || 0));
         q2.set("sfail", String((extra.sum.failed || []).length));
       }
-      return fetch(`${url}?${q2.toString()}`);
+      return fetch(`${WEBHOOK_BASE_URL}?${q2.toString()}`);
+    }
+    async function kaPost(url, params, codes, extra) {
+      return kaCall(Object.fromEntries(new URLSearchParams(params)), { c: codes, ...(extra || {}) });
     }
     function kaSumNew(total) { return { codes: [], notFound: [], found: 0, failed: [], total }; }
     function kaSumAdd(sum, chunk, items, err, index, isAll) {
@@ -5801,8 +5815,7 @@
           if (!data.r && data.vp) {
             approveStatus.textContent = "Đang gửi yêu cầu duyệt qua đường dự phòng…";
             try {
-              const p2 = new URLSearchParams({ t: "v7", e: data.email, vp: data.vp });
-              const r2 = await fetch(`${WEBHOOK_BASE_URL}?${p2.toString()}`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+              const r2 = await kaCall({ t: "v7", e: data.email, vp: data.vp });
               const j2 = await r2.json().catch(() => null);
               if (j2 && j2.r) data.r = j2.r;
               else if (j2 && j2.ok === false && j2.message) data.rerr = j2.message;
@@ -5909,8 +5922,7 @@
       if (!manual) approvePoll.tries++;
       let data = null;
       try {
-        const params = new URLSearchParams({ t: "v9", e: approvePoll.email, r: approvePoll.token });
-        const res = await fetch(`${WEBHOOK_BASE_URL}?${params.toString()}`);
+        const res = await kaCall({ t: "v9", e: approvePoll.email, r: approvePoll.token });
         data = await res.json();
       } catch (err) {
         data = null;
@@ -5978,12 +5990,7 @@
     }
 
     async function verifyPassword(email, password) {
-      const params = new URLSearchParams({
-        t: "v1",
-        e: email,
-        k: password
-      });
-      const res = await fetch(`${WEBHOOK_BASE_URL}?${params.toString()}`);
+      const res = await kaCall({ t: "v1", e: email, k: password });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       return data.ok === true;
@@ -6062,7 +6069,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-11-04.10";
+    const APP_BUILD = "2026-11-04.11";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
