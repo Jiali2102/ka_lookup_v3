@@ -1600,7 +1600,17 @@
     .pivot-pct { position: relative; min-width: 120px; }
     .pivot-pct .pivot-bar { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); height: 60%; background: #FDE2CF; border-radius: 4px; z-index: 0; max-width: calc(100% - 16px); }
     .pivot-pct b { position: relative; z-index: 1; }
-    .pivot-table tfoot td { background: #F8F5F0; border-top: 2px solid #E5E0D8; padding: 12px 14px; }
+    .pivot-scroll { max-height: calc(100vh - 290px); min-height: 220px; overflow: auto; border-radius: 12px; border: 1px solid var(--line, #E5E7EB); }
+    .pivot-scroll .pivot-table { margin: 0; }
+    .pivot-table thead th { position: sticky; top: 0; z-index: 2; }
+    .pivot-table th.pv-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+    .pivot-table th.pv-sort:hover { filter: brightness(1.15); }
+    .pivot-table tfoot td, .pivot-table tfoot td:first-child { position: sticky; bottom: 0; z-index: 3; background: #0E4174 !important; color: #fff !important; font-weight: 700; padding: 12px 14px; border-top: 0; white-space: nowrap; }
+    .pivot-table td.pv-cell { cursor: pointer; }
+    .pivot-table td.pv-cell:hover { background: #FFE7D6; }
+    .pivot-table td.pv-empty { color: #9CA3AF; cursor: default; }
+    .pivot-table td.pv-rowtotal { font-weight: 700; background: #F8F5F0; }
+    .pivot-controls label { display: inline-flex; align-items: center; gap: 6px; }
     .pivot-drill { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; border-radius: 10px; background: #EEF4FB; color: #0E4174; font-size: 13.5px; margin-bottom: 8px; }
     .stat-badge.sum { background: #FFF4ED; color: #9A3412; border-color: #F5C9A9; font-weight: 700; }
 
@@ -2461,6 +2471,8 @@
             label: "Đền bù",
             useDateRange: false,
             chunkSize: 2000,
+            sumField: "so_tien",
+            sumLabel: "Tổng tiền đền bù",
             knownFields: ["so_tien", "loai_yeu_cau", "ngay_duyet"],
             amountFields: ["so_tien"],
             dateFields: ["ngay_duyet"],
@@ -2636,10 +2648,11 @@
         if (/(từ chối|hủy|reject|không đạt)/.test(v)) return "danger";
         return "";
       }
+      function roundHalfUp(n) { return Math.sign(n) * Math.round(Math.abs(n)); }
       function formatAmount(v) {
         const n = Number(String(v).replace(/[^\d.-]/g, ""));
         if (isNaN(n)) return v;
-        return n.toLocaleString("vi-VN") + " đ";
+        return roundHalfUp(n).toLocaleString("vi-VN") + " đ";
       }
       function getCode(item) {
         return item.ma_don || item.order_code || item.code || "";
@@ -2925,80 +2938,142 @@
         const m2 = t.match(/^(\d{1,2})\/(\d{4})$/);
         return m2 ? `${m2[2]}-${m2[1].padStart(2, "0")}` : t;
       }
+      function pvSt() { return pivotState[activeTab] = pivotState[activeTab] || {}; }
+      function pvDims(cfg) {
+        const p = cfg.pivot, st = pvSt();
+        const find = k => p.dims.find(d => d.key === k) || null;
+        const row = find(st.row) || p.dims[0];
+        const sub = st.sub ? find(st.sub) : null;
+        const col = st.col ? find(st.col) : null;
+        return { row, sub: sub && sub.key !== row.key ? sub : null, col: col && col.key !== row.key && (!sub || col.key !== sub.key) ? col : null };
+      }
+      function pvMetricOpts(cfg) {
+        const v = cfg.pivot.value;
+        return [["count", "Số đơn"], ...(v ? [["value", v.label]] : []), ["pct_count", "% số đơn"], ...(v ? [["pct_value", `% ${v.label.toLowerCase()}`]] : [])];
+      }
       function pivotRows(cfg, items) {
-        const p = cfg.pivot;
-        const st = pivotState[activeTab] || {};
-        const d1 = p.dims.find(d => d.key === st.d1) || p.dims[0];
-        const d2 = st.d2 === "" ? null : (p.dims.find(d => d.key === st.d2 && d.key !== d1.key) || null);
-        const map = new Map();
-        let totalCount = 0, totalVal = 0;
-        const totalCodes = new Set();
+        const p = cfg.pivot, st = pvSt();
+        const { row, sub, col } = pvDims(cfg);
+        const val = it => p.value ? Number(it[p.value.field]) || 0 : 0;
+        const rows = new Map(), cols = new Map();
+        const total = { codes: new Set(), val: 0 };
         for (const it of items) {
-          const a = pivotKey(it[d1.key], d1.month);
-          const b = d2 ? pivotKey(it[d2.key], d2.month) : "";
-          const k = `${a}\u0001${b}`;
-          const r = map.get(k) || { a, b, codes: new Set(), rows: 0, val: 0 };
+          const a = pivotKey(it[row.key], row.month);
+          const b = sub ? pivotKey(it[sub.key], sub.month) : "";
+          const c = col ? pivotKey(it[col.key], col.month) : "";
           const code = String(getCode(it) || "").toUpperCase();
-          r.codes.add(code);
-          r.rows++;
-          if (p.value) r.val += Number(it[p.value.field]) || 0;
-          map.set(k, r);
-          totalCodes.add(code);
-          totalVal += p.value ? Number(it[p.value.field]) || 0 : 0;
-          totalCount++;
+          const rk = `${a}\u0001${b}`;
+          const r = rows.get(rk) || { a, b, codes: new Set(), val: 0, cells: new Map() };
+          r.codes.add(code); r.val += val(it);
+          if (col) {
+            const cell = r.cells.get(c) || { codes: new Set(), val: 0 };
+            cell.codes.add(code); cell.val += val(it); r.cells.set(c, cell);
+            const ct = cols.get(c) || { key: c, codes: new Set(), val: 0 };
+            ct.codes.add(code); ct.val += val(it); cols.set(c, ct);
+          }
+          rows.set(rk, r);
+          total.codes.add(code); total.val += val(it);
         }
-        const rows = [...map.values()].sort((x, y) => (p.value ? y.val - x.val : y.codes.size - x.codes.size) || String(x.a).localeCompare(String(y.a)) || String(x.b).localeCompare(String(y.b)));
-        return { d1, d2, rows, totalCodes: totalCodes.size, totalVal, totalCount };
+        let colList = [...cols.values()];
+        colList.sort((x, y) => col && col.month ? String(x.key).localeCompare(String(y.key)) : (p.value ? y.val - x.val : y.codes.size - x.codes.size));
+        colList = colList.slice(0, 30);
+        const metric = pvMetricOpts(cfg).some(m => m[0] === st.metric) ? st.metric : (p.value ? "value" : "count");
+        const mv = o => metric === "count" ? o.codes.size : metric === "value" ? o.val : metric === "pct_count" ? (total.codes.size ? o.codes.size / total.codes.size * 100 : 0) : (total.val ? o.val / total.val * 100 : 0);
+        const sk = st.sortKey || "__total", dir = st.sortDir === "asc" ? 1 : -1;
+        const keyOf = r => sk === "__row" ? r.a : sk === "__sub" ? r.b : sk === "__count" ? r.codes.size : sk === "__value" ? r.val : sk.startsWith("c:") ? mv(r.cells.get(sk.slice(2)) || { codes: new Set(), val: 0 }) : mv(r);
+        const list = [...rows.values()].sort((x, y) => {
+          const kx = keyOf(x), ky = keyOf(y);
+          const cmp = typeof kx === "number" && typeof ky === "number" ? kx - ky : String(kx).localeCompare(String(ky), "vi");
+          return cmp * dir || String(x.a).localeCompare(String(y.a));
+        });
+        return { row, sub, col, rows: list, cols: colList, total, metric, mv };
+      }
+      function pvFmt(cfg, metric, n) {
+        if (metric === "value") return formatMoney(n);
+        if (metric === "count") return Number(n).toLocaleString("vi-VN");
+        return `${(Math.round(n * 10) / 10).toLocaleString("vi-VN", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
       }
       function pivotHtml(cfg, items) {
-        const p = cfg.pivot;
-        const st = pivotState[activeTab] || {};
-        const { d1, d2, rows, totalCodes, totalVal } = pivotRows(cfg, items);
-        const opt = (sel, allowNone) => `${allowNone ? `<option value="" ${sel === null ? "selected" : ""}>(không)</option>` : ""}${p.dims.map(d => `<option value="${d.key}" ${sel && sel.key === d.key ? "selected" : ""}>${thEsc(d.label)}</option>`).join("")}`;
-        const base = p.value ? totalVal : totalCodes;
-        const max = Math.max(1, ...rows.map(r => p.value ? r.val : r.codes.size));
-        const body = rows.map((r, i) => {
-          const v = p.value ? r.val : r.codes.size;
-          const pct = base ? (v / base * 100) : 0;
-          return `<tr class="pivot-row" data-pv="${i}"><td>${thEsc(r.a || "(trống)")}</td>${d2 ? `<td>${thEsc(r.b || "(trống)")}</td>` : ""}<td class="align-right">${r.codes.size.toLocaleString("vi-VN")}</td>${p.value ? `<td class="amount-cell">${formatMoney(r.val)}</td>` : ""}<td class="pivot-pct"><span class="pivot-bar" style="width:${Math.round(v / max * 100)}%"></span><b>${pct.toFixed(1).replace(".", ",")}%</b></td></tr>`;
-        }).join("");
+        const p = cfg.pivot, st = pvSt();
+        const pr = pivotRows(cfg, items);
+        const { row, sub, col, rows, cols, total, metric, mv } = pr;
+        const dimOpt = (sel, allowNone, exclude) => `${allowNone ? `<option value="" ${!sel ? "selected" : ""}>(không)</option>` : ""}${p.dims.filter(d => !exclude.includes(d.key)).map(d => `<option value="${d.key}" ${sel && sel.key === d.key ? "selected" : ""}>${thEsc(d.label)}</option>`).join("")}`;
+        const metOpt = pvMetricOpts(cfg).map(([k, l]) => `<option value="${k}" ${metric === k ? "selected" : ""}>${thEsc(l)}</option>`).join("");
+        const arrow = k => (st.sortKey || "__total") === k ? (st.sortDir === "asc" ? " ▲" : " ▼") : "";
+        const th = (k, label, right) => `<th class="pv-sort${right ? " align-right" : ""}" data-sort="${k}">${thEsc(label)}${arrow(k)}</th>`;
+        let head, body, foot;
+        if (!col) {
+          const base = metric === "pct_value" || metric === "value" ? total.val : total.codes.size;
+          const maxv = Math.max(1, ...rows.map(r => metric === "pct_value" || metric === "value" ? r.val : r.codes.size));
+          head = `<tr>${th("__row", row.label)}${sub ? th("__sub", sub.label) : ""}${th("__count", "Số đơn", true)}${p.value ? th("__value", p.value.label, true) : ""}${th("__total", "Tỷ lệ")}</tr>`;
+          body = rows.map((r, i) => {
+            const v = metric === "pct_value" || metric === "value" ? r.val : r.codes.size;
+            const pct = base ? v / base * 100 : 0;
+            return `<tr class="pivot-row" data-pv="${i}"><td>${thEsc(r.a || "(trống)")}</td>${sub ? `<td>${thEsc(r.b || "(trống)")}</td>` : ""}<td class="align-right">${r.codes.size.toLocaleString("vi-VN")}</td>${p.value ? `<td class="amount-cell">${formatMoney(r.val)}</td>` : ""}<td class="pivot-pct"><span class="pivot-bar" style="width:${Math.round(v / maxv * 100)}%"></span><b>${pvFmt(cfg, "pct_count", pct)}</b></td></tr>`;
+          }).join("");
+          foot = `<tr><td>Tổng</td>${sub ? "<td></td>" : ""}<td class="align-right">${total.codes.size.toLocaleString("vi-VN")}</td>${p.value ? `<td class="align-right">${formatMoney(total.val)}</td>` : ""}<td>100%</td></tr>`;
+        } else {
+          head = `<tr>${th("__row", row.label)}${sub ? th("__sub", sub.label) : ""}${cols.map(c => th(`c:${c.key}`, c.key || "(trống)", true)).join("")}${th("__total", "Tổng", true)}</tr>`;
+          body = rows.map((r, i) => `<tr class="pivot-row" data-pv="${i}"><td>${thEsc(r.a || "(trống)")}</td>${sub ? `<td>${thEsc(r.b || "(trống)")}</td>` : ""}${cols.map(c => { const cell = r.cells.get(c.key); return `<td class="align-right pv-cell${cell ? "" : " pv-empty"}" data-col="${thEsc(c.key)}">${cell ? pvFmt(cfg, metric, mv(cell)) : "–"}</td>`; }).join("")}<td class="align-right pv-rowtotal">${pvFmt(cfg, metric, mv(r))}</td></tr>`).join("");
+          foot = `<tr><td>Tổng</td>${sub ? "<td></td>" : ""}${cols.map(c => `<td class="align-right">${pvFmt(cfg, metric, mv(c))}</td>`).join("")}<td class="align-right">${pvFmt(cfg, metric, mv(total))}</td></tr>`;
+        }
         return `<div class="pivot-wrap">
-          <div class="pivot-controls">Nhóm theo <select id="pv-d1">${opt(d1, false)}</select> rồi theo <select id="pv-d2">${opt(d2, true)}</select><span class="pivot-hint">${rows.length.toLocaleString("vi-VN")} nhóm · bấm 1 dòng để xem danh sách đơn</span><button class="btn-ghost" id="btn-pivot-dl">⬇ Tải Pivot (.xlsx)</button></div>
-          <div class="results-table-wrap"><table class="result-table pivot-table">
-            <thead><tr><th>${thEsc(d1.label)}</th>${d2 ? `<th>${thEsc(d2.label)}</th>` : ""}<th class="align-right">Số đơn</th>${p.value ? `<th class="align-right">${thEsc(p.value.label)}</th>` : ""}<th>Tỷ lệ</th></tr></thead>
-            <tbody>${body}</tbody>
-            <tfoot><tr><td><b>Tổng</b></td>${d2 ? "<td></td>" : ""}<td class="align-right"><b>${totalCodes.toLocaleString("vi-VN")}</b></td>${p.value ? `<td class="amount-cell"><b>${formatMoney(totalVal)}</b></td>` : ""}<td><b>100%</b></td></tr></tfoot>
+          <div class="pivot-controls">
+            <label>Dòng <select id="pv-row">${dimOpt(row, false, [])}</select></label>
+            <label>Dòng phụ <select id="pv-sub">${dimOpt(sub, true, [row.key])}</select></label>
+            <label>Cột <select id="pv-col">${dimOpt(col, true, [row.key, ...(sub ? [sub.key] : [])])}</select></label>
+            <label>Chỉ số <select id="pv-metric">${metOpt}</select></label>
+            <span class="pivot-hint">${rows.length.toLocaleString("vi-VN")} dòng${col ? ` × ${cols.length} cột` : ""} · bấm tiêu đề để sắp xếp · bấm ô để xem đơn</span>
+            <button class="btn-ghost" id="btn-pivot-dl">⬇ Tải Pivot (.xlsx)</button>
+          </div>
+          <div class="pivot-scroll"><table class="result-table pivot-table">
+            <thead>${head}</thead><tbody>${body}</tbody><tfoot>${foot}</tfoot>
           </table></div>
         </div>`;
       }
       function bindPivot(cfg) {
         const btn = el("#btn-pivot");
         if (!btn) return;
-        const st = pivotState[activeTab] = pivotState[activeTab] || {};
+        const st = pvSt();
         btn.onclick = () => { st.on = !st.on; if (st.on) st.drill = null; rerenderTable(); };
         const und = el("#btn-pivot-undrill");
         if (und) und.onclick = () => { st.drill = null; st.on = true; rerenderTable(); };
         if (!st.on) return;
-        const d1 = el("#pv-d1"), d2 = el("#pv-d2");
-        if (d1) d1.onchange = () => { st.d1 = d1.value; if (st.d2 === d1.value) st.d2 = ""; rerenderTable(); };
-        if (d2) d2.onchange = () => { st.d2 = d2.value; rerenderTable(); };
+        const bindSel = (id, key) => { const e = el(id); if (e) e.onchange = () => { st[key] = e.value; if (key !== "metric") { st.sortKey = null; } rerenderTable(); }; };
+        bindSel("#pv-row", "row"); bindSel("#pv-sub", "sub"); bindSel("#pv-col", "col"); bindSel("#pv-metric", "metric");
+        document.querySelectorAll(".pv-sort").forEach(h => {
+          h.onclick = () => {
+            const k = h.dataset.sort;
+            if ((st.sortKey || "__total") === k) st.sortDir = st.sortDir === "asc" ? "desc" : "asc";
+            else { st.sortKey = k; st.sortDir = k === "__row" || k === "__sub" ? "asc" : "desc"; }
+            rerenderTable();
+          };
+        });
         const all = lastResults;
         const pr = pivotRows(cfg, all);
+        const drillTo = (r, colKey) => {
+          st.drill = [[pr.row.key, r.a, !!pr.row.month], ...(pr.sub ? [[pr.sub.key, r.b, !!pr.sub.month]] : []), ...(colKey !== undefined && pr.col ? [[pr.col.key, colKey, !!pr.col.month]] : [])];
+          st.on = false; currentPage = 1; rerenderTable();
+        };
         document.querySelectorAll(".pivot-row").forEach(tr => {
-          tr.onclick = () => {
+          tr.onclick = ev => {
             const r = pr.rows[Number(tr.dataset.pv)];
             if (!r) return;
-            st.drill = [[pr.d1.key, r.a, !!pr.d1.month], ...(pr.d2 ? [[pr.d2.key, r.b, !!pr.d2.month]] : [])];
-            st.on = false;
-            currentPage = 1;
-            rerenderTable();
+            const cell = ev.target.closest(".pv-cell");
+            if (cell && cell.classList.contains("pv-empty")) return;
+            drillTo(r, cell ? cell.dataset.col : undefined);
           };
         });
         const dl = el("#btn-pivot-dl");
         if (dl) dl.onclick = () => {
           const p = cfg.pivot;
-          const head = [pr.d1.label, ...(pr.d2 ? [pr.d2.label] : []), "Số đơn", ...(p.value ? [p.value.label] : [])];
-          const aoa = [head, ...pr.rows.map(r => [r.a, ...(pr.d2 ? [r.b] : []), r.codes.size, ...(p.value ? [r.val] : [])]), ["Tổng", ...(pr.d2 ? [""] : []), pr.totalCodes, ...(p.value ? [pr.totalVal] : [])]];
+          let aoa;
+          if (!pr.col) {
+            aoa = [[pr.row.label, ...(pr.sub ? [pr.sub.label] : []), "Số đơn", ...(p.value ? [p.value.label] : [])], ...pr.rows.map(r => [r.a, ...(pr.sub ? [r.b] : []), r.codes.size, ...(p.value ? [r.val] : [])]), ["Tổng", ...(pr.sub ? [""] : []), pr.total.codes.size, ...(p.value ? [pr.total.val] : [])]];
+          } else {
+            const ml = (pvMetricOpts(cfg).find(m => m[0] === pr.metric) || [])[1];
+            aoa = [[`${pr.row.label} \\ ${pr.col.label} (${ml})`, ...(pr.sub ? [pr.sub.label] : []), ...pr.cols.map(c => c.key), "Tổng"], ...pr.rows.map(r => [r.a, ...(pr.sub ? [r.b] : []), ...pr.cols.map(c => { const cell = r.cells.get(c.key); return cell ? pr.mv(cell) : ""; }), pr.mv(r)]), ["Tổng", ...(pr.sub ? [""] : []), ...pr.cols.map(c => pr.mv(c)), pr.mv(pr.total)]];
+          }
           const detailFields = [...cfg.knownFields];
           const detail = [[cfg.codeLabel || "Mã đơn", ...detailFields.map(f => (cfg.labels || {})[f] || CONFIG.FIELD_LABELS[f] || f)], ...all.map(it => [getCode(it), ...detailFields.map(f => it[f] ?? "")])];
           const wb = XLSX.utils.book_new();
@@ -4043,7 +4118,7 @@
         const v = r[f];
         if (v === undefined || v === null || v === "") return "";
         if (DV2_MONEY.has(f)) return formatMoney(v);
-        if (DV2_NUMBER.has(f)) return Number(v).toLocaleString("vi-VN");
+        if (DV2_NUMBER.has(f)) { const n = Number(v); return isNaN(n) ? v : (Math.sign(n) * Math.round(Math.abs(n))).toLocaleString("vi-VN"); }
         if (dv2State.dateDisplay !== "datetime" && typeof v === "string" && DV2_DATETIME_RE.test(v)) return v.slice(0, 10);
         return v;
       }
@@ -5010,7 +5085,7 @@
       function formatMoney(v) {
         const n = Number(v);
         if (isNaN(n)) return v;
-        return n.toLocaleString("vi-VN") + " đ";
+        return (Math.sign(n) * Math.round(Math.abs(n))).toLocaleString("vi-VN") + " đ";
       }
 
       const CHK_COLUMNS = [
@@ -6088,7 +6163,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-11-04.12";
+    const APP_BUILD = "2026-11-05.1";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
