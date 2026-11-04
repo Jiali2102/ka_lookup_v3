@@ -2457,11 +2457,18 @@
           miencuoc: {
             label: "Miễn cước",
             useDateRange: false,
-            knownFields: ["ly_do", "so_tien_mien", "ngay_duyet", "trang_thai"],
+            codeLabel: "Mã đơn hàng",
+            knownFields: ["client_name", "lay_thanh_cong", "so_tien_mien", "ly_do", "thang_mien_cuoc"],
             amountFields: ["so_tien_mien"],
-            dateFields: ["ngay_duyet"],
-            statusField: "trang_thai",
-            notReady: true
+            dateFields: ["lay_thanh_cong", "thang_mien_cuoc"],
+            statusField: null,
+            labels: {
+              client_name: "Khách hàng",
+              lay_thanh_cong: "Lấy thành công",
+              so_tien_mien: "ST miễn cước",
+              ly_do: "Lý do",
+              thang_mien_cuoc: "Tháng miễn cước"
+            }
           },
           ticket: {
             label: "Ticket",
@@ -2493,7 +2500,8 @@
           reason: "Lý do",
           overdue_date: "Ngày chốt quá hạn",
           ly_do: "Lý do",
-          so_tien_mien: "Số tiền miễn",
+          so_tien_mien: "ST miễn cước",
+          lay_thanh_cong: "Lấy thành công",
           thang_mien_cuoc: "Tháng miễn cước",
           loai_don_hang: "Loại đơn hàng",
           trang_thai: "Trạng thái",
@@ -2684,7 +2692,7 @@
       }
       function buildExportRows(cfg) {
         const fields = [...cfg.knownFields, ...cfg.exportExtraFields || []];
-        const header = ["Mã đơn", ...fields.map(f => CONFIG.FIELD_LABELS[f] || f), "Số lần phát sinh"];
+        const header = [cfg.codeLabel || "Mã đơn", ...fields.map(f => (cfg.labels || {})[f] || CONFIG.FIELD_LABELS[f] || f), "Số lần phát sinh"];
         const splitFields = cfg.splitFieldsForExport || [];
         const rows = [];
         lastResults.forEach(item => {
@@ -2903,7 +2911,7 @@
         const pageSizeOptions = [10, 20, 50, 100].map(n => `<option value="${n}" ${n === pageSize ? "selected" : ""}>${n}</option>`).join("");
         const toolbarHtml = `\n    <div class="toolbar">\n      ${statsHtml}\n      <div class="toolbar-actions">\n        <label class="pagesize-label">Hiện <select id="page-size-select">${pageSizeOptions}</select> / trang</label>\n        <button class="btn-ghost" id="btn-copy-found">📋 Copy mã đơn</button>\n        <div class="dl-wrap">\n          <button class="btn-ghost" id="btn-dl-toggle">⬇ Tải ▾</button>\n          <div class="dl-menu" id="dl-menu">\n            <div class="dl-item" data-fmt="xlsx">Excel (.xlsx)</div>\n            <div class="dl-item" data-fmt="csv">CSV (.csv)</div>\n            <div class="dl-item" data-fmt="json">JSON (.json)</div>\n          </div>\n        </div>\n      </div>\n    </div>`;
         const headerFieldKeys = [null, ...cfg.knownFields];
-        const headerCells = ["Mã đơn", ...cfg.knownFields.map(f => CONFIG.FIELD_LABELS[f] || f)];
+        const headerCells = [cfg.codeLabel || "Mã đơn", ...cfg.knownFields.map(f => (cfg.labels || {})[f] || CONFIG.FIELD_LABELS[f] || f)];
         const theadHtml = `<tr>${headerCells.map((h, i) => {
           const key = headerFieldKeys[i];
           const isRight = key && (cfg.amountFields.includes(key) || (cfg.dateFields || []).includes(key));
@@ -3049,7 +3057,7 @@
       const TH_SOURCES = [
         { k: "den_bu", label: "Đền bù", fields: ["so_tien", "loai_yeu_cau", "ngay_duyet"], brief: list => formatMoney(list.reduce((s, e) => s + (Number(e.so_tien) || 0), 0)) },
         { k: "qua_han", label: "Quá hạn", fields: ["reason", "overdue_date"], brief: list => list.map(e => e.overdue_date).filter(Boolean).sort().slice(-1)[0] || "Có" },
-        { k: "mien_cuoc", label: "Miễn cước", fields: ["so_tien_mien", "thang_mien_cuoc", "ly_do", "loai_don_hang"], brief: list => formatMoney(list.reduce((s, e) => s + (Number(e.so_tien_mien) || 0), 0)) },
+        { k: "mien_cuoc", label: "Miễn cước", fields: ["so_tien_mien", "thang_mien_cuoc", "ly_do", "lay_thanh_cong", "loai_don_hang"], brief: list => formatMoney(list.reduce((s, e) => s + (Number(e.so_tien_mien) || 0), 0)) },
         { k: "ticket", label: "Ticket", fields: ["client_name", "reason_type", "first_article_from", "ticket_url"], brief: list => `${list.length} ticket` },
         { k: "fake", label: "Fake Attempt", fields: ["month", "client_type"], brief: list => [...new Set(list.map(e => String(e.month || "").slice(0, 7)))].join(", ") }
       ];
@@ -5800,7 +5808,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-11-02.2";
+    const APP_BUILD = "2026-11-04.1";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
