@@ -49,7 +49,15 @@ module.exports = async (req, res) => {
 
   try {
     const key = String(process.env.N8N_LOOKUP_V2_KEY || "").trim().replace(/^["']|["']$/g, "");
-    const upstream = await fetch(`${target}${qs}`, { method: "GET", headers: key ? { "x-kl-key": key } : {} });
+    const isPost = req.method === "POST";
+    let body = null;
+    if (isPost) {
+      body = req.body;
+      if (typeof body === "string") { try { body = JSON.parse(body); } catch (err) { body = null; } }
+      if (!body || typeof body !== "object") body = {};
+    }
+    const headers = { ...(key ? { "x-kl-key": key } : {}), ...(isPost ? { "content-type": "application/json" } : {}) };
+    const upstream = await fetch(`${target}${qs}`, isPost ? { method: "POST", headers, body: JSON.stringify(body) } : { method: "GET", headers });
     const text = await upstream.text();
     let q = {};
     try { q = Object.fromEntries(new URLSearchParams(qs.slice(1))); } catch (err) { }
