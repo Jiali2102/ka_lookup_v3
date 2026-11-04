@@ -1,4 +1,30 @@
 module.exports = async (req, res) => {
+  if (req.query && req.query.ping) {
+    const target = process.env.N8N_WEBHOOK_URL;
+    const key = String(process.env.N8N_LOOKUP_V2_KEY || "").trim().replace(/^["']|["']$/g, "");
+    const out = { build: "m3k7-2026-11-04.11", at: new Date().toISOString(), hasUrl: Boolean(target), keyLen: key.length };
+    if (target) {
+      try {
+        const host = new URL(target).host;
+        out.host = host;
+        const t0 = Date.now();
+        const up = await fetch(`${target}?t=ping`, { method: "POST", headers: { ...(key ? { "x-kl-key": key } : {}), "content-type": "application/json", "accept": "application/json" }, body: "{}" });
+        const raw = await up.text().catch(() => "");
+        out.status = up.status;
+        out.ms = Date.now() - t0;
+        out.server = up.headers.get("server") || "";
+        out.cfRay = up.headers.get("cf-ray") || "";
+        out.cfMitigated = up.headers.get("cf-mitigated") || "";
+        out.cloudflareChallenge = out.cfMitigated === "challenge" || /just a moment|cf-chl/i.test(raw);
+        out.body = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+        out.verdict = out.cloudflareChallenge ? "Cloudflare vẫn đang chặn bằng trang kiểm tra" : up.status === 403 ? "Hệ thống từ chối (thường là sai mã khoá)" : up.status < 500 ? "Thông đường tới Hệ thống" : "Hệ thống lỗi";
+      } catch (e) { out.error = String(e && e.message || e); }
+    }
+    res.setHeader("Cache-Control", "no-store");
+    res.status(200).json(out);
+    return;
+  }
+
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
 
   const idToken = req.query.i;
@@ -57,7 +83,7 @@ module.exports = async (req, res) => {
             return;
           }
           if (j && j.r) reqToken = String(j.r);
-          else if (/just a moment|cf-chl|challenge/i.test(raw)) {
+          else if (up.headers.get("cf-mitigated") === "challenge" || /just a moment|cf-chl/i.test(raw)) {
             reqErr = "lớp bảo vệ Cloudflare của Hệ thống chặn máy chủ Vercel";
             break;
           } else {
@@ -79,7 +105,7 @@ module.exports = async (req, res) => {
       const payload = Buffer.from(`${email}|${exp}`).toString("base64url");
       vp = `${payload}.${crypto.createHmac("sha256", process.env.N8N_LOOKUP_V2_KEY).update(`v7|${payload}`).digest("base64url")}`;
     }
-    res.status(200).json({ ok: true, email, name: String(data.name || "").slice(0, 80), r: reqToken, vp, rerr: reqToken ? "" : reqErr, build: "m3k7-2026-11-04.10" });
+    res.status(200).json({ ok: true, email, name: String(data.name || "").slice(0, 80), r: reqToken, vp, rerr: reqToken ? "" : reqErr, build: "m3k7-2026-11-04.11" });
   } catch (err) {
     res.status(502).json({ ok: false, message: "Không xác minh được, thử lại." });
   }
