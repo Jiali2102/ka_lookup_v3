@@ -47,7 +47,7 @@ module.exports = async (req, res) => {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 12000);
         try {
-          const up = await fetch(`${target}?${params.toString()}`, { method: "POST", headers: { ...(key ? { "x-kl-key": key } : {}), "content-type": "application/json" }, body: "{}", signal: ctrl.signal });
+          const up = await fetch(`${target}?${params.toString()}`, { method: "POST", headers: { ...(key ? { "x-kl-key": key } : {}), "content-type": "application/json", "accept": "application/json", "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36" }, body: "{}", signal: ctrl.signal });
           const raw = await up.text().catch(() => "");
           let j = null;
           try { j = raw ? JSON.parse(raw) : null; } catch (e) { j = null; }
@@ -57,7 +57,10 @@ module.exports = async (req, res) => {
             return;
           }
           if (j && j.r) reqToken = String(j.r);
-          else {
+          else if (/just a moment|cf-chl|challenge/i.test(raw)) {
+            reqErr = "lớp bảo vệ Cloudflare của Hệ thống chặn máy chủ Vercel";
+            break;
+          } else {
             const hint = String((j && (j.message || j.error)) || raw || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 90);
             reqErr = `hệ thống trả HTTP ${up.status}${hint ? `: ${hint}` : " không có dữ liệu"} · gọi POST · khoá ${key ? `${key.length} ký tự` : "TRỐNG"}`;
           }
@@ -69,7 +72,14 @@ module.exports = async (req, res) => {
       }
     }
 
-    res.status(200).json({ ok: true, email, name: String(data.name || "").slice(0, 80), r: reqToken, rerr: reqToken ? "" : reqErr, build: "m3k7-2026-11-04.9" });
+        let vp = "";
+    if (!reqToken && process.env.N8N_LOOKUP_V2_KEY) {
+      const crypto = require("crypto");
+      const exp = Math.floor(Date.now() / 1000) + 600;
+      const payload = Buffer.from(`${email}|${exp}`).toString("base64url");
+      vp = `${payload}.${crypto.createHmac("sha256", process.env.N8N_LOOKUP_V2_KEY).update(`v7|${payload}`).digest("base64url")}`;
+    }
+    res.status(200).json({ ok: true, email, name: String(data.name || "").slice(0, 80), r: reqToken, vp, rerr: reqToken ? "" : reqErr, build: "m3k7-2026-11-04.10" });
   } catch (err) {
     res.status(502).json({ ok: false, message: "Không xác minh được, thử lại." });
   }
