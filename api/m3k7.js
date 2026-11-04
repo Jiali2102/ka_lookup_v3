@@ -37,24 +37,37 @@ module.exports = async (req, res) => {
     }
 
     let reqToken = null;
+    let reqErr = "";
     const target = process.env.N8N_WEBHOOK_URL;
-    if (target) {
-      try {
-        const key = String(process.env.N8N_LOOKUP_V2_KEY || "").trim().replace(/^["']|["']$/g, "");
-        const params = new URLSearchParams({ t: "v7", e: email });
-        const up = await fetch(`${target}?${params.toString()}`, { method: "GET", headers: key ? { "x-kl-key": key } : {} });
-        const j = await up.json().catch(() => null);
-        if (j && j.ok === false) {
-          res.status(200).json({ ok: false, message: j.message || "Tài khoản này không được cấp quyền truy cập." });
-          return;
+    if (!target) reqErr = "thiếu cấu hình hệ thống";
+    else {
+      const key = String(process.env.N8N_LOOKUP_V2_KEY || "").trim().replace(/^["']|["']$/g, "");
+      const params = new URLSearchParams({ t: "v7", e: email });
+      for (let attempt = 1; attempt <= 2 && !reqToken; attempt++) {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 12000);
+        try {
+          const up = await fetch(`${target}?${params.toString()}`, { method: "GET", headers: key ? { "x-kl-key": key } : {}, signal: ctrl.signal });
+          const j = await up.json().catch(() => null);
+          if (j && j.ok === false) {
+            clearTimeout(timer);
+            res.status(200).json({ ok: false, message: j.message || "Tài khoản này không được cấp quyền truy cập." });
+            return;
+          }
+          if (j && j.r) reqToken = String(j.r);
+          else reqErr = `hệ thống trả HTTP ${up.status}${j ? "" : " không có dữ liệu"}`;
+        } catch (err) {
+          reqErr = err && err.name === "AbortError" ? "hệ thống phản hồi quá 12 giây" : "không kết nối được hệ thống";
+        } finally {
+          clearTimeout(timer);
         }
-        reqToken = j && j.r ? String(j.r) : null;
-      } catch (err) {
       }
     }
 
-    res.status(200).json({ ok: true, email, name: String(data.name || "").slice(0, 80), r: reqToken });
+    res.status(200).json({ ok: true, email, name: String(data.name || "").slice(0, 80), r: reqToken, rerr: reqToken ? "" : reqErr });
   } catch (err) {
     res.status(502).json({ ok: false, message: "Không xác minh được, thử lại." });
   }
 };
+
+module.exports.config = { maxDuration: 40 };
