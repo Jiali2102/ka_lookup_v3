@@ -35,7 +35,7 @@ const AUTH_CHECK_TYPE = process.env.AUTH_CHECK_TYPE || "v3";
 
 async function verifyByKacSupport(email, password) {
   const params = new URLSearchParams({ t: AUTH_CHECK_TYPE, c: "AUTHCHECK0", e: email, k: password });
-  const r = await fetch(`${AUTH_URL}?${params.toString()}`, { method: "GET", headers: LOOKUP_KEY ? { "x-kl-key": LOOKUP_KEY } : {} });
+  const r = await fetch(`${AUTH_URL}?${params.toString()}`, { method: "POST", headers: { ...(LOOKUP_KEY ? { "x-kl-key": LOOKUP_KEY } : {}), "content-type": "application/json" }, body: "{}" });
   if (!r.ok) return false;
   const data = await r.json().catch(() => null);
   if (data === null) return false;
