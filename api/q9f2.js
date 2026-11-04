@@ -56,8 +56,13 @@ module.exports = async (req, res) => {
       if (typeof body === "string") { try { body = JSON.parse(body); } catch (err) { body = null; } }
       if (!body || typeof body !== "object") body = {};
     }
-    const headers = { ...(key ? { "x-kl-key": key } : {}), ...(isPost ? { "content-type": "application/json" } : {}) };
-    const upstream = await fetch(`${target}${qs}`, isPost ? { method: "POST", headers, body: JSON.stringify(body) } : { method: "GET", headers });
+    const safeBody = {};
+    if (isPost && body) {
+      if (body.c != null) safeBody.c = body.c;
+      if (body.sum && typeof body.sum === "object") safeBody.sum = body.sum;
+    }
+    const headers = { ...(key ? { "x-kl-key": key } : {}), "content-type": "application/json" };
+    const upstream = await fetch(`${target}${qs}`, { method: "POST", headers, body: JSON.stringify(safeBody) });
     const text = await upstream.text();
     let q = {};
     try { q = Object.fromEntries(new URLSearchParams(qs.slice(1))); } catch (err) { }
