@@ -5512,6 +5512,11 @@
       } catch (err) { }
       const q2 = new URLSearchParams(params);
       q2.set("c", codes);
+      if (extra && extra.sum) {
+        q2.set("stotal", String(extra.sum.total || 0));
+        q2.set("sfound", String(extra.sum.found || 0));
+        q2.set("sfail", String((extra.sum.failed || []).length));
+      }
       return fetch(`${url}?${q2.toString()}`);
     }
     function kaSumNew(total) { return { codes: [], notFound: [], found: 0, failed: [], total }; }
@@ -5867,7 +5872,7 @@
     });
   </script>
   <script>const APP_VERSION = "v3";
-    const APP_BUILD = "2026-11-04.4";
+    const APP_BUILD = "2026-11-04.5";
     document.getElementById("rail-version").innerHTML = APP_VERSION + " · bản<br>" + APP_BUILD;
   </script>
   <script>window.addEventListener("keydown", e => {
