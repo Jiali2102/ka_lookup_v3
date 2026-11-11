@@ -28,25 +28,6 @@ module.exports = async (req, res) => {
 
   const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
   const sp = new URLSearchParams(qs.slice(1));
-
-  if (sp.get("t") === "v7") {
-    const vp = String(sp.get("vp") || "");
-    const [payload, sig] = vp.split(".");
-    let ok = false;
-    if (payload && sig && process.env.N8N_LOOKUP_V2_KEY) {
-      const expected = crypto.createHmac("sha256", process.env.N8N_LOOKUP_V2_KEY).update(`v7|${payload}`).digest("base64url");
-      if (sig.length === expected.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
-        const [em, exp] = Buffer.from(payload, "base64url").toString().split("|");
-        ok = em && em === String(sp.get("e") || "").toLowerCase() && Number(exp) * 1000 > Date.now();
-      }
-    }
-    if (!ok) {
-      res.status(200).json({ ok: false, message: "Yêu cầu không hợp lệ." });
-      return;
-    }
-    sp.delete("vp");
-  }
-
   const q = Object.fromEntries(sp.entries());
 
   try {
