@@ -5905,26 +5905,8 @@
         const data = await res.json();
         if (data.ok) {
           try { if (data.name) localStorage.setItem(AUTH_NAME_KEY, data.name); } catch (err) { }
-          showPasswordStep(data.email);
-          if (!data.r && data.vp) {
-            approveStatus.textContent = "Đang gửi yêu cầu duyệt qua đường dự phòng…";
-            try {
-              const r2 = await kaCall({ t: "v7", e: data.email, vp: data.vp });
-              const j2 = await r2.json().catch(() => null);
-              if (j2 && j2.r) data.r = j2.r;
-              else if (j2 && j2.ok === false && j2.message) data.rerr = j2.message;
-              else data.rerr = `${data.rerr || ""} · đường dự phòng HTTP ${r2.status}`;
-            } catch (err) { data.rerr = `${data.rerr || ""} · đường dự phòng lỗi kết nối`; }
-          }
-          if (data.r) startApprovalPoll(data.email, data.r);
-          else {
-            setPassVisible(false);
-            setWaiting(false);
-            approveStatus.textContent = `Chưa gửi được yêu cầu duyệt tới admin${data.rerr ? ` (${data.rerr})` : ""}. Bấm "Gửi lại yêu cầu duyệt".${data.build ? "" : " [máy chủ đang chạy m3k7.js bản cũ]"}`;
-            btnCheckApprove.style.display = "";
-            btnCheckApprove.textContent = "Gửi lại yêu cầu duyệt";
-            btnCheckApprove.dataset.resend = "1";
-          }
+          sessionEmail = data.email;
+          unlockApp();
         } else {
           googleError.textContent = data.message || "Xác minh Google thất bại.";
         }
