@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { getAccessToken } = require("../lib/google-auth");
 
 const KL2S_NAME = "kl2s";
 const KL2S_TTL = 12 * 60 * 60;
@@ -34,8 +35,9 @@ const LOOKUP_KEY = LOOKUP_KEY_RAW.trim().replace(/^["']|["']$/g, "");
 const AUTH_CHECK_TYPE = process.env.AUTH_CHECK_TYPE || "v3";
 
 async function verifyByKacSupport(email, password) {
+  const accessToken = await getAccessToken();
   const params = new URLSearchParams({ t: AUTH_CHECK_TYPE, c: "AUTHCHECK0", e: email, k: password });
-  const r = await fetch(`${AUTH_URL}?${params.toString()}`, { method: "POST", headers: { ...(LOOKUP_KEY ? { "x-kl-key": LOOKUP_KEY } : {}), "content-type": "application/json" }, body: "{}" });
+  const r = await fetch(`${AUTH_URL}?${params.toString()}`, { method: "POST", headers: { "authorization": `Bearer ${accessToken}`, "content-type": "application/json" }, body: "{}" });
   if (!r.ok) return false;
   const data = await r.json().catch(() => null);
   if (data === null) return false;
@@ -47,7 +49,10 @@ module.exports = async (req, res) => {
   const missing = [
     ["N8N_WEBHOOK_URL", AUTH_URL],
     ["N8N_LOOKUP_V2_URL", LOOKUP_URL],
-    ["N8N_LOOKUP_V2_KEY", LOOKUP_KEY]
+    ["N8N_LOOKUP_V2_KEY", LOOKUP_KEY],
+    ["GOOGLE_OAUTH_CLIENT_ID", process.env.GOOGLE_OAUTH_CLIENT_ID],
+    ["GOOGLE_OAUTH_CLIENT_SECRET", process.env.GOOGLE_OAUTH_CLIENT_SECRET],
+    ["GOOGLE_OAUTH_REFRESH_TOKEN", process.env.GOOGLE_OAUTH_REFRESH_TOKEN]
   ].filter(([, v]) => !v).map(([k]) => k);
   if (req.method === "GET") {
     const s = kl2sRead(req);
@@ -102,9 +107,10 @@ module.exports = async (req, res) => {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 55000);
   try {
+    const accessToken = await getAccessToken();
     const upstream = await fetch(LOOKUP_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-kl-key": LOOKUP_KEY },
+      headers: { "Content-Type": "application/json", "authorization": `Bearer ${accessToken}` },
       body: JSON.stringify(isLog ? { action: "log", email, summary: summary || {} } : { codes, email, quiet: Boolean(q) }),
       signal: ctrl.signal
     });
