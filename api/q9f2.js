@@ -54,7 +54,7 @@ module.exports = async (req, res) => {
 
     const text = await upstream.text();
     let data;
-    try { data = JSON.parse(text); } catch (err) { data = { ok: false, message: `Hệ thống trả về dữ liệu không hợp lệ (HTTP ${upstream.status}).` }; }
+    try { data = JSON.parse(text); } catch (err) { data = { ok: false, message: `DEBUG HTTP ${upstream.status}: ${text.slice(0, 300)}` }; }
 
     try {
       if (upstream.ok && LOOKUP_TYPES.has(String(q.t || "")) && q.e) {
