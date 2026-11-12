@@ -25,6 +25,8 @@ module.exports = async (req, res) => {
 
   const ALLOWED_DOMAIN = process.env.ALLOWED_EMAIL_DOMAIN || "ghn.vn";
   const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+  const ALLOWED_EMAILS = String(process.env.ALLOWED_EMAILS || "")
+    .split(",").map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
 
   try {
     const r = await fetch(
@@ -49,6 +51,11 @@ module.exports = async (req, res) => {
 
     if (!emailVerified || domain !== ALLOWED_DOMAIN.toLowerCase()) {
       res.status(200).json({ ok: false, message: `Chỉ chấp nhận email công ty @${ALLOWED_DOMAIN}.` });
+      return;
+    }
+
+    if (ALLOWED_EMAILS.length && !ALLOWED_EMAILS.includes(email)) {
+      res.status(200).json({ ok: false, message: "Email này chưa được cấp quyền truy cập trang. Liên hệ admin nếu cần." });
       return;
     }
 
