@@ -1,5 +1,5 @@
 const crypto = require("crypto");
-const { getAccessToken } = require("../lib/google-auth");
+const { callViaQueue } = require("../lib/sheet-queue");
 
 const KL2S_NAME = "kl2s";
 const KL2S_TTL = 12 * 60 * 60;
@@ -20,8 +20,7 @@ const LOOKUP_TYPES = new Set(["v1", "v2", "v3", "v4", "v5", "v6"]);
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
 
-  const target = process.env.N8N_WEBHOOK_URL;
-  if (!target) {
+  if (!process.env.QUEUE_SHEET_ID || !process.env.GOOGLE_SA_KEY_JSON) {
     res.status(500).json({ ok: false, message: "Hệ thống chưa sẵn sàng, vui lòng báo admin." });
     return;
   }
@@ -45,19 +44,10 @@ module.exports = async (req, res) => {
     }
     const payload = { ...q, ...safeBody };
 
-    const accessToken = await getAccessToken();
-    const upstream = await fetch(target, {
-      method: "POST",
-      headers: { "content-type": "application/json", "authorization": `Bearer ${accessToken}` },
-      body: JSON.stringify(payload)
-    });
-
-    const text = await upstream.text();
-    let data;
-    try { data = JSON.parse(text); } catch (err) { data = { ok: false, message: `DEBUG HTTP ${upstream.status}: ${text.slice(0, 300)}` }; }
+    const data = await callViaQueue(q.t, payload);
 
     try {
-      if (upstream.ok && LOOKUP_TYPES.has(String(q.t || "")) && q.e) {
+      if (LOOKUP_TYPES.has(String(q.t || "")) && q.e) {
         const passed = Array.isArray(data) || (data && data.ok !== false && (q.t !== "v1" || data.ok === true));
         if (passed) kl2sIssue(res, q.e);
       }
