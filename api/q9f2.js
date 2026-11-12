@@ -77,7 +77,8 @@ module.exports = async (req, res) => {
 
     res.status(200).json(data);
   } catch (err) {
-    res.status(502).json({ ok: false, message: "Không kết nối được hệ thống, thử lại sau." });
+    if (q.pj) res.status(200).json({ ok: null, pending: true, pj: q.pj });
+    else res.status(502).json({ ok: false, message: "Không kết nối được hệ thống, thử lại sau." });
   }
 };
 
