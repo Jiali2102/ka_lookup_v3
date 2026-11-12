@@ -79,7 +79,7 @@ module.exports = async (req, res) => {
       const data = await callViaQueue("lookupv2", {}, pj);
       res.status(200).json(data);
     } catch (err) {
-      res.status(504).json({ ok: false, message: "Không kết nối được hệ thống, thử lại sau." });
+      res.status(200).json({ ok: null, pending: true, pj });
     }
     return;
   }
