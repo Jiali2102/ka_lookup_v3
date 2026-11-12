@@ -17,6 +17,19 @@ function kl2sIssue(res, email) {
 
 const LOOKUP_TYPES = new Set(["v1", "v2", "v3", "v4", "v5", "v6"]);
 
+function kl2sRead(req) {
+  const cookie = String(req.headers.cookie || "");
+  const m = cookie.match(/(?:^|;\s*)kl2s=([^;]+)/);
+  if (!m) return null;
+  const [payload, sig] = decodeURIComponent(m[1]).split(".");
+  if (!payload || !sig || !process.env.N8N_LOOKUP_V2_KEY) return null;
+  const expected = kl2sSign(payload);
+  if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  const [email, exp] = Buffer.from(payload, "base64url").toString().split("|");
+  if (!email || Number(exp) * 1000 < Date.now()) return null;
+  return email.toLowerCase();
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
 
@@ -28,6 +41,15 @@ module.exports = async (req, res) => {
   const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
   const sp = new URLSearchParams(qs.slice(1));
   const q = Object.fromEntries(sp.entries());
+
+  if (LOOKUP_TYPES.has(String(q.t || "")) && q.t !== "v1") {
+    const sessionEmail = kl2sRead(req);
+    if (!sessionEmail) {
+      res.status(200).json({ ok: false, message: "Phiên đăng nhập đã hết hiệu lực hoặc đã bị thu hồi." });
+      return;
+    }
+    q.e = sessionEmail;
+  }
 
   try {
     const isPost = req.method === "POST";
