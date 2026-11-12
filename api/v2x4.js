@@ -129,4 +129,4 @@ module.exports = async (req, res) => {
   }
 };
 
-module.exports.config = { maxDuration: 60 };
+module.exports.config = { maxDuration: 100 };
