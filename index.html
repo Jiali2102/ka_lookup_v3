@@ -4095,23 +4095,6 @@
         return data;
       }
       async function dv2FetchOnce(payload) {
-        if (payload.pj) {
-          const res = await fetch(DV2_ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-          return res.json().catch(() => ({ ok: false, message: `HTTP ${res.status}` }));
-        }
-        for (let attempt = 0; attempt < 2; attempt++) {
-          const lt = await dv2GetTicket(attempt > 0);
-          if (!lt) break;
-          try {
-            const { k, ...rest } = payload;
-            const res = await fetch(DV2_DIRECT_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...rest, lt }) });
-            const ct = res.headers.get("content-type") || "";
-            if (!ct.includes("json")) break;
-            const data = await res.json();
-            if (data && data.ok === false && /phiên đăng nhập/i.test(String(data.message || "")) && attempt === 0) continue;
-            return data;
-          } catch (err) { break; }
-        }
         const res = await fetch(DV2_ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         return res.json().catch(() => ({ ok: false, message: `HTTP ${res.status}` }));
       }
