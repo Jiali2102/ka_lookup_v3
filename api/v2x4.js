@@ -73,6 +73,17 @@ module.exports = async (req, res) => {
     return;
   }
   const { c, e, k, q, kind, summary, pj } = req.body || {};
+
+  if (pj) {
+    try {
+      const data = await callViaQueue("lookupv2", {}, pj);
+      res.status(200).json(data);
+    } catch (err) {
+      res.status(504).json({ ok: false, message: "Không kết nối được hệ thống, thử lại sau." });
+    }
+    return;
+  }
+
   const isLog = kind === "log";
   const email = String(e || "").toLowerCase();
   const codes = (Array.isArray(c) ? c : String(c || "").split(/[\s,;]+/)).filter(Boolean);
