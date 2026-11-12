@@ -1,5 +1,5 @@
 const crypto = require("crypto");
-const { getAccessToken } = require("../lib/google-auth");
+const { callViaQueue } = require("../lib/sheet-queue");
 
 const KL2S_NAME = "kl2s";
 const KL2S_TTL = 12 * 60 * 60;
@@ -35,11 +35,7 @@ const LOOKUP_KEY = LOOKUP_KEY_RAW.trim().replace(/^["']|["']$/g, "");
 const AUTH_CHECK_TYPE = process.env.AUTH_CHECK_TYPE || "v3";
 
 async function verifyByKacSupport(email, password) {
-  const accessToken = await getAccessToken();
-  const params = new URLSearchParams({ t: AUTH_CHECK_TYPE, c: "AUTHCHECK0", e: email, k: password });
-  const r = await fetch(`${AUTH_URL}?${params.toString()}`, { method: "POST", headers: { "authorization": `Bearer ${accessToken}`, "content-type": "application/json" }, body: "{}" });
-  if (!r.ok) return false;
-  const data = await r.json().catch(() => null);
+  const data = await callViaQueue(AUTH_CHECK_TYPE, { t: AUTH_CHECK_TYPE, c: "AUTHCHECK0", e: email, k: password });
   if (data === null) return false;
   return Array.isArray(data) || data.ok !== false;
 }
