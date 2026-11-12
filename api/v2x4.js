@@ -35,8 +35,14 @@ const LOOKUP_KEY = LOOKUP_KEY_RAW.trim().replace(/^["']|["']$/g, "");
 const AUTH_CHECK_TYPE = process.env.AUTH_CHECK_TYPE || "v3";
 
 async function verifyByKacSupport(email, password) {
-  const data = await callViaQueue(AUTH_CHECK_TYPE, { t: AUTH_CHECK_TYPE, c: "AUTHCHECK0", e: email, k: password });
-  if (data === null) return false;
+  let data = await callViaQueue(AUTH_CHECK_TYPE, { t: AUTH_CHECK_TYPE, c: "AUTHCHECK0", e: email, k: password });
+  let tries = 0;
+  while (data && data.pending === true && tries < 6) {
+    await new Promise(r => setTimeout(r, 2500));
+    data = await callViaQueue(AUTH_CHECK_TYPE, { t: AUTH_CHECK_TYPE, c: "AUTHCHECK0", e: email, k: password }, data.pj);
+    tries++;
+  }
+  if (data === null || (data && data.pending === true)) return false;
   return Array.isArray(data) || data.ok !== false;
 }
 
