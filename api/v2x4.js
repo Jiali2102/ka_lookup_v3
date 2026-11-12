@@ -28,8 +28,6 @@ function kl2sRead(req) {
   return { email, exp: Number(exp) };
 }
 
-const AUTH_URL = process.env.N8N_WEBHOOK_URL;
-const LOOKUP_URL = process.env.N8N_LOOKUP_V2_URL;
 const LOOKUP_KEY_RAW = process.env.N8N_LOOKUP_V2_KEY || "";
 const LOOKUP_KEY = LOOKUP_KEY_RAW.trim().replace(/^["']|["']$/g, "");
 const AUTH_CHECK_TYPE = process.env.AUTH_CHECK_TYPE || "v3";
@@ -49,21 +47,16 @@ async function verifyByKacSupport(email, password) {
 module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
   const missing = [
-    ["N8N_WEBHOOK_URL", AUTH_URL],
-    ["N8N_LOOKUP_V2_URL", LOOKUP_URL],
     ["N8N_LOOKUP_V2_KEY", LOOKUP_KEY],
-    ["GOOGLE_OAUTH_CLIENT_ID", process.env.GOOGLE_OAUTH_CLIENT_ID],
-    ["GOOGLE_OAUTH_CLIENT_SECRET", process.env.GOOGLE_OAUTH_CLIENT_SECRET],
-    ["GOOGLE_OAUTH_REFRESH_TOKEN", process.env.GOOGLE_OAUTH_REFRESH_TOKEN]
+    ["QUEUE_SHEET_ID", process.env.QUEUE_SHEET_ID],
+    ["GOOGLE_SA_KEY_JSON", process.env.GOOGLE_SA_KEY_JSON]
   ].filter(([, v]) => !v).map(([k]) => k);
   if (req.method === "GET") {
     const s = kl2sRead(req);
     res.status(200).json({
       ok: missing.length === 0,
-      version: "2026-10-02.9",
+      version: "2026-11-12.1",
       missing,
-      lookup_host: LOOKUP_URL ? new URL(LOOKUP_URL).host : "",
-      lookup_path: LOOKUP_URL ? new URL(LOOKUP_URL).pathname : "",
       key_len: LOOKUP_KEY.length,
       key_fp: LOOKUP_KEY ? crypto.createHash("sha256").update(LOOKUP_KEY).digest("hex").slice(0, 8) : "",
       key_had_spaces_or_quotes: LOOKUP_KEY !== LOOKUP_KEY_RAW,
@@ -79,7 +72,7 @@ module.exports = async (req, res) => {
     res.status(500).json({ ok: false, message: `Vercel chưa có biến môi trường: ${missing.join(", ")}. Thêm ở Settings → Environment Variables (Production) rồi Redeploy.` });
     return;
   }
-  const { c, e, k, q, kind, summary } = req.body || {};
+  const { c, e, k, q, kind, summary, pj } = req.body || {};
   const isLog = kind === "log";
   const email = String(e || "").toLowerCase();
   const codes = (Array.isArray(c) ? c : String(c || "").split(/[\s,;]+/)).filter(Boolean);
@@ -106,33 +99,15 @@ module.exports = async (req, res) => {
     }
     kl2sIssue(res, email);
   }
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 55000);
   try {
-    const accessToken = await getAccessToken();
-    const upstream = await fetch(LOOKUP_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "authorization": `Bearer ${accessToken}` },
-      body: JSON.stringify(isLog ? { action: "log", email, summary: summary || {} } : { codes, email, quiet: Boolean(q) }),
-      signal: ctrl.signal
-    });
-    if (upstream.status === 401 || upstream.status === 403) {
-      res.status(200).json({ ok: false, message: "Hệ thống từ chối kết nối, vui lòng báo admin." });
-      return;
-    }
-    if (upstream.status === 404) {
-      res.status(200).json({ ok: false, message: "Hệ thống tra cứu đang tạm dừng, vui lòng báo admin." });
-      return;
-    }
-    const text = await upstream.text();
-    let data;
-    try { data = JSON.parse(text); } catch (err) { data = { ok: false, message: `Hệ thống trả về dữ liệu không hợp lệ (HTTP ${upstream.status}).` }; }
+    const payload = isLog
+      ? { t: "lookupv2", action: "log", email, summary: summary || {} }
+      : { t: "lookupv2", codes, email, quiet: Boolean(q) };
+    const data = await callViaQueue("lookupv2", payload, pj);
     res.status(200).json(data);
   } catch (err) {
-    res.status(504).json({ ok: false, message: err.name === "AbortError" ? "Quá thời gian chờ (55 giây), thử lại với ít mã hơn." : "Không kết nối được hệ thống, thử lại sau." });
-  } finally {
-    clearTimeout(timer);
+    res.status(504).json({ ok: false, message: "Không kết nối được hệ thống, thử lại sau." });
   }
 };
 
-module.exports.config = { maxDuration: 100 };
+module.exports.config = { maxDuration: 20 };
