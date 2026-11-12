@@ -3551,10 +3551,19 @@
           if (data.ok === false) throw new Error(data.message || "Lỗi không xác định");
           return Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : [];
         };
+        let currentLoadingLabel = "Đang tra cứu...";
+        const paintLoading = () => {
+          const sec = ((Date.now() - batchStart) / 1000).toFixed(0);
+          resultsArea.innerHTML = `<div class="state loading"><span class="spinner"></span>${currentLoadingLabel} · ⏱ ${sec}s</div>`;
+        };
+        paintLoading();
+        const loadingTicker = setInterval(paintLoading, 1000);
+        try {
         for (let i = 0; i < totalChunks; i++) {
           const chunk = codeChunks[i];
           const isLast = i === totalChunks - 1;
-          resultsArea.innerHTML = `<div class="state loading"><span class="spinner"></span>Đang tra cứu${totalChunks > 1 ? ` — lượt ${i + 1}/${totalChunks} (${chunk.length} mã)` : "..."}</div>`;
+          currentLoadingLabel = `Đang tra cứu${totalChunks > 1 ? ` — lượt ${i + 1}/${totalChunks} (${chunk.length} mã)` : "..."}`;
+          paintLoading();
           const params = baseParams();
           if (totalChunks > 1) { params.set("b", batchId); params.set("bn", String(totalChunks)); params.set("bi", String(i + 1)); params.set("bt", String(batchStart)); }
           try {
@@ -3573,7 +3582,8 @@
           for (let h = 0; h < halves.length; h++) {
             const part = halves[h];
             const lastPart = h === halves.length - 1;
-            resultsArea.innerHTML = `<div class="state loading"><span class="spinner"></span>Đang tra cứu — lượt ${i + 1}/${totalChunks} tách nhỏ ${h + 1}/${halves.length} (${part.length} mã)</div>`;
+            currentLoadingLabel = `Đang tra cứu — lượt ${i + 1}/${totalChunks} tách nhỏ ${h + 1}/${halves.length} (${part.length} mã)`;
+            paintLoading();
             const p = baseParams();
             let extra = null;
             if (isLast && lastPart) {
@@ -3591,6 +3601,9 @@
               failedChunks.push({ index: i + 1, count: part.length, message: err2.message });
             }
           }
+        }
+        } finally {
+          clearInterval(loadingTicker);
         }
         el("#btn-search").disabled = false;
         if (failedChunks.length === totalChunks) {
@@ -4072,6 +4085,20 @@
         return null;
       }
       async function dv2Fetch(payload) {
+        let data = await dv2FetchOnce(payload);
+        let tries = 0;
+        while (data && data.pending === true && data.pj && tries < 40) {
+          await new Promise(r => setTimeout(r, 3000));
+          data = await dv2FetchOnce({ pj: data.pj });
+          tries++;
+        }
+        return data;
+      }
+      async function dv2FetchOnce(payload) {
+        if (payload.pj) {
+          const res = await fetch(DV2_ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          return res.json().catch(() => ({ ok: false, message: `HTTP ${res.status}` }));
+        }
         for (let attempt = 0; attempt < 2; attempt++) {
           const lt = await dv2GetTicket(attempt > 0);
           if (!lt) break;
