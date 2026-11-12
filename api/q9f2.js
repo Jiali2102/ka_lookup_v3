@@ -66,10 +66,10 @@ module.exports = async (req, res) => {
     }
     const payload = { ...q, ...safeBody };
 
-    const data = await callViaQueue(q.t, payload);
+    const data = await callViaQueue(q.t, payload, q.pj);
 
     try {
-      if (LOOKUP_TYPES.has(String(q.t || "")) && q.e) {
+      if (LOOKUP_TYPES.has(String(q.t || "")) && q.e && data && data.pending !== true) {
         const passed = Array.isArray(data) || (data && data.ok !== false && (q.t !== "v1" || data.ok === true));
         if (passed) kl2sIssue(res, q.e);
       }
@@ -81,4 +81,4 @@ module.exports = async (req, res) => {
   }
 };
 
-module.exports.config = { maxDuration: 100 };
+module.exports.config = { maxDuration: 20 };
