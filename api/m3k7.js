@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { getAllowedEmails } = require("../lib/sheet-queue");
 
 const KL2S_NAME = "kl2s";
 const KL2S_TTL = 12 * 60 * 60;
@@ -25,8 +26,12 @@ module.exports = async (req, res) => {
 
   const ALLOWED_DOMAIN = process.env.ALLOWED_EMAIL_DOMAIN || "ghn.vn";
   const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
-  const ALLOWED_EMAILS = String(process.env.ALLOWED_EMAILS || "")
-    .split(",").map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
+  let ALLOWED_EMAILS = [];
+  try { ALLOWED_EMAILS = await getAllowedEmails(); } catch (err) { ALLOWED_EMAILS = []; }
+  if (!ALLOWED_EMAILS.length) {
+    ALLOWED_EMAILS = String(process.env.ALLOWED_EMAILS || "")
+      .split(",").map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
+  }
 
   try {
     const r = await fetch(
