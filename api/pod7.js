@@ -68,11 +68,35 @@ module.exports = async (req, res) => {
   }
 };
 
+const crypto = require("crypto");
+
+function kl2sSign(payload) {
+  return crypto.createHmac("sha256", process.env.N8N_LOOKUP_V2_KEY || "").update(payload).digest("base64url");
+}
+
+function kl2sRead(req) {
+  if (!process.env.N8N_LOOKUP_V2_KEY) return null;
+  const m = String(req.headers.cookie || "").match(/(?:^|;\s*)kl2s=([^;]+)/);
+  if (!m) return null;
+  const [payload, sig] = m[1].split(".");
+  if (!payload || !sig) return null;
+  const expected = kl2sSign(payload);
+  if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  const [email, exp] = Buffer.from(payload, "base64url").toString().split("|");
+  if (!email || Number(exp) * 1000 < Date.now()) return null;
+  return { email, exp: Number(exp) };
+}
+
 async function handleRequest(req, res) {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
 
   if (req.method !== "POST") {
     res.status(405).json({ ok: false, message: "Chỉ hỗ trợ POST." });
+    return;
+  }
+
+  if (!kl2sRead(req)) {
+    res.status(401).json({ ok: false, message: "Phiên đăng nhập không hợp lệ, vui lòng đăng nhập lại." });
     return;
   }
 
